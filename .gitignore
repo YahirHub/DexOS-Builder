@@ -1,0 +1,12 @@
+/alpine-root/
+/aports/
+/alpine-conf/
+/cache/
+/out/*
+!/out/.gitkeep
+/build-home/
+/project/bin-yah-installer
+/runtime/
+*.log
+*.pid
+*.rc
