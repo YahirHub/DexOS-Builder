@@ -169,15 +169,19 @@ start(){
 }
 EOF_USER
 makefile root:root 0600 "$tmp/etc/doas.d/20-yah-live.conf" <<'EOF_DOAS'
-permit nopass yah as root cmd /usr/local/bin/yah-installer
+permit nopass yah as root cmd /usr/local/sbin/yah-install-root
 EOF_DOAS
 
 # Instalador pequeño: wrapper seguro hacia setup-alpine en terminal por ahora.
 # deuda-tecnica: reemplazar por wizard Go completo cuando runtime XFCE esté validado, antes de release estable.
 makefile root:root 0755 "$tmp/usr/local/bin/yah-installer" <<'EOF_INSTALLER'
 #!/bin/sh
-exec xfce4-terminal --title="Instalar Yah Alpine" --hold -e "setup-alpine"
+exec xfce4-terminal --title="Instalar Yah Alpine" --hold -e "doas /usr/local/sbin/yah-install-root"
 EOF_INSTALLER
+makefile root:root 0755 "$tmp/usr/local/sbin/yah-install-root" <<'EOF_INSTALLROOT'
+#!/bin/sh
+exec setup-alpine
+EOF_INSTALLROOT
 mkdir -p "$tmp/usr/share/applications"
 makefile root:root 0644 "$tmp/usr/share/applications/yah-installer.desktop" <<'EOF_DESKTOP'
 [Desktop Entry]
