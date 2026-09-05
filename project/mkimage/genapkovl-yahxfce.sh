@@ -96,6 +96,11 @@ ca-certificates
 curl
 EOF_WORLD
 
+# evdev crea /dev/input/event*; Xorg/libinput depende de estos nodos.
+makefile root:root 0644 "$tmp/etc/modules" <<'EOF_MODULES'
+evdev
+EOF_MODULES
+
 makefile root:root 0644 "$tmp/etc/network/interfaces" <<'EOF_NET'
 auto lo
 iface lo inet loopback
@@ -201,6 +206,7 @@ EOF_DESKTOP
 # Eudev conforme a setup-devd udev: sin mdev/hwdrivers paralelos.
 rc_add devfs sysinit
 rc_add dmesg sysinit
+rc_add modloop sysinit
 rc_add udev sysinit
 rc_add udev-trigger sysinit
 rc_add udev-settle sysinit

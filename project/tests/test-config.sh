@@ -14,6 +14,9 @@ test -L rootfs/etc/runlevels/default/dbus
 test -L rootfs/etc/runlevels/default/elogind
 test -L rootfs/etc/runlevels/default/networkmanager
 test -L rootfs/etc/runlevels/default/lightdm
+grep -qx 'evdev' rootfs/etc/modules
+test -L rootfs/etc/runlevels/sysinit/modloop
+test "$(readlink rootfs/etc/runlevels/sysinit/modloop)" = '/etc/init.d/modloop'
 test ! -e rootfs/etc/runlevels/sysinit/mdev
 test ! -e rootfs/etc/runlevels/sysinit/hwdrivers
 test ! -e rootfs/etc/runlevels/default/acpid
