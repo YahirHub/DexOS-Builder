@@ -23,4 +23,17 @@ with tempfile.TemporaryDirectory() as td:
     assert m.BIOS_GUID.lower() in dump.lower()
     assert m.ESP_GUID.lower() in dump.lower()
     assert m.LINUX_GUID.lower() in dump.lower()
+
+# GRUB entries must never depend on /dev/vda3; force stable UUID and root-storage modules.
+sample = '''menuentry "DexOS" {
+    linux /boot/vmlinuz-lts root=/dev/vda3 quiet modules=sd-mod,ext4
+    initrd /boot/initramfs-lts
+}
+'''
+fixed = m.rewrite_grub_root(sample, '1111-2222')
+assert 'root=/dev/vda3' not in fixed
+assert 'root=UUID=1111-2222' in fixed
+assert 'rootfstype=ext4' in fixed
+assert 'modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4' in fixed
+
 print('test-installer: OK')

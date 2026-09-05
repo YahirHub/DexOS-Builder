@@ -81,3 +81,15 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - El sistema instalado recibe branding DexOS, LightDM sin autologin, NetworkManager, eudev, XFCE y GRUB BIOS+UEFI.
 - Dependencias nuevas del Live para la GUI: `python3` y `py3-gobject3`; GTK3 ya forma parte del stack XFCE.
 - Pruebas: compilación Python, overlay, doas/launcher, symlink-safety, rutas SATA/NVMe, tabla GPT sobre archivo sparse de 9 GiB y disponibilidad de 80 paquetes del sistema destino en el APKINDEX offline.
+
+## Corrección de arranque del sistema instalado 2026-09-05
+- En la primera instalación real, GRUB y el kernel sí arrancaron, pero el initramfs cayó en recovery con: `mount: mounting /dev/vda3 on /sysroot failed: No such file or directory`.
+- Causa: el arranque instalado dependía de que VirtIO se autodetectara a tiempo y GRUB había generado `root=/dev/vda3`, una ruta inestable.
+- Corrección del backend:
+  - feature `dexosroot` de mkinitfs que fuerza `virtio`, `virtio_ring`, `virtio_pci`, `virtio_blk` y `ext4` dentro del initramfs;
+  - verificación previa de que esos módulos existen en el kernel instalado;
+  - validación de que `initramfs-lts` fue realmente generado;
+  - GRUB se reescribe después de `grub-mkconfig` para usar `root=UUID=<uuid>`;
+  - se precargan `virtio,virtio_ring,virtio_pci,virtio_blk,ext4` mediante `modules=` y se fija `rootfstype=ext4`;
+  - se rechaza la instalación si persiste un `root=/dev/...` en `grub.cfg`.
+- Se añadió prueba de regresión que parte de un `linux ... root=/dev/vda3` y exige salida con UUID y módulos VirtIO.

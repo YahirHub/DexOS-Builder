@@ -56,3 +56,12 @@ Corregir la sesión Live XFCE congelada.
 - [ ] Recompilar ISO con python3 + py3-gobject3.
 - [ ] Validar que la GUI abre en el Live.
 - [ ] Realizar instalación completa en disco virtual y arrancar desde ese disco.
+
+## Arranque del sistema instalado 2026-09-05
+- [x] Reproducir fallo de initramfs con `/dev/vda3` ausente.
+- [x] Forzar módulos VirtIO + ext4 en initramfs instalado.
+- [x] Forzar root por UUID en GRUB.
+- [x] Añadir prueba de regresión de `grub.cfg`.
+- [ ] Reempaquetar ISO con backend corregido.
+- [ ] Reinstalar en disco virtual limpio.
+- [ ] Arrancar sin ISO y confirmar login/LightDM/XFCE.

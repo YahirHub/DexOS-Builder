@@ -222,7 +222,8 @@ def configure_system(cfg, p2, p3):
     efi_uuid = output(['blkid', '-s', 'UUID', '-o', 'value', p2])
     write(TARGET / 'etc/fstab', f'''UUID={root_uuid}\t/\text4\tdefaults,noatime\t0 1\nUUID={efi_uuid}\t/boot/efi\tvfat\tumask=0077\t0 2\ntmpfs\t/tmp\ttmpfs\tnosuid,nodev\t0 0\n''')
     write(TARGET / 'etc/apk/repositories', '''https://dl-cdn.alpinelinux.org/alpine/edge/main\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\n''')
-    write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme"\n')
+    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.modules', '''kernel/drivers/virtio/virtio.ko*\nkernel/drivers/virtio/virtio_ring.ko*\nkernel/drivers/virtio/virtio_pci.ko*\nkernel/drivers/block/virtio_blk.ko*\nkernel/fs/ext4/ext4.ko*\n''')
+    write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme dexosroot"\n')
 
     # Standard installed-system OpenRC, never the Live-only services.
     for service, level in [
@@ -240,9 +241,36 @@ def configure_system(cfg, p2, p3):
     versions = sorted((TARGET / 'lib/modules').iterdir(), key=lambda x: x.name)
     if not versions:
         raise InstallError('No se encontró el kernel instalado.')
-    chroot(['/sbin/mkinitfs', '-c', '/etc/mkinitfs/mkinitfs.conf', versions[-1].name])
+    kver = versions[-1].name
+    module_dir = TARGET / 'lib/modules' / kver
+    required_patterns = [
+        'kernel/drivers/virtio/virtio.ko*',
+        'kernel/drivers/virtio/virtio_ring.ko*',
+        'kernel/drivers/virtio/virtio_pci.ko*',
+        'kernel/drivers/block/virtio_blk.ko*',
+        'kernel/fs/ext4/ext4.ko*',
+    ]
+    missing = [pattern for pattern in required_patterns if not list(module_dir.glob(pattern))]
+    if missing:
+        raise InstallError('Faltan módulos críticos del kernel: ' + ', '.join(missing))
+    chroot(['/sbin/mkinitfs', '-c', '/etc/mkinitfs/mkinitfs.conf', kver])
+    initramfs = TARGET / 'boot/initramfs-lts'
+    if not initramfs.is_file() or initramfs.stat().st_size < 1024 * 1024:
+        raise InstallError('mkinitfs no generó un initramfs válido.')
 
-def install_bootloader(disk):
+def rewrite_grub_root(text, root_uuid):
+    fixed = []
+    for line in text.splitlines():
+        if re.match(r'^\s*linux(?:efi)?\s', line):
+            line = re.sub(r'\s+root=\S+', '', line)
+            line = re.sub(r'\s+rootfstype=\S+', '', line)
+            line = re.sub(r'\s+modules=\S+', '', line)
+            line += f' root=UUID={root_uuid} rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4'
+        fixed.append(line)
+    return '\n'.join(fixed) + '\n'
+
+
+def install_bootloader(disk, root_uuid):
     progress(0.86, 'Instalando GRUB BIOS/UEFI')
     # BIOS path for older PCs.
     run(['grub-install', '--boot-directory=' + str(TARGET / 'boot'), '--target=i386-pc', disk])
@@ -255,8 +283,16 @@ def install_bootloader(disk):
     fallback = TARGET / 'boot/efi/EFI/BOOT/BOOTX64.EFI'
     fallback.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(efi, fallback)
-    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=3\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet"\n''')
+    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=3\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_CMDLINE_LINUX_DEFAULT="quiet rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
     chroot(['/usr/sbin/grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
+    grub_cfg = TARGET / 'boot/grub/grub.cfg'
+    text = grub_cfg.read_text()
+    write(grub_cfg, rewrite_grub_root(text, root_uuid), 0o644)
+    verify = grub_cfg.read_text()
+    if f'root=UUID={root_uuid}' not in verify:
+        raise InstallError('GRUB no quedó configurado con el UUID de la raíz.')
+    if re.search(r'\sroot=/dev/', verify):
+        raise InstallError('GRUB todavía contiene una ruta /dev/ inestable para la raíz.')
 
 def install(cfg):
     cfg = validate(cfg)
@@ -298,7 +334,8 @@ def install(cfg):
              '--no-network', '--repository', repo] + pkgs)
 
         configure_system(cfg, p2, p3)
-        install_bootloader(disk)
+        root_uuid = output(['blkid', '-s', 'UUID', '-o', 'value', p3])
+        install_bootloader(disk, root_uuid)
         progress(0.96, 'Sincronizando datos')
         run(['sync'])
         cleanup()
