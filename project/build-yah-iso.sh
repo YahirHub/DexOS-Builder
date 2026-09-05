@@ -24,7 +24,10 @@ mkdir -p "$ALPINE_ROOT/etc/apk/keys"
 cp "$PUBKEY" "$ALPINE_ROOT/etc/apk/keys/yah-alpine.rsa.pub"
 cp "$ROOT/project/mkimage/mkimg.yahxfce.sh" "$APORTS/scripts/mkimg.yahxfce.sh"
 cp "$ROOT/project/mkimage/genapkovl-yahxfce.sh" "$APORTS/scripts/genapkovl-yahxfce.sh"
-chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh"
+cp "$ROOT/project/installer/dexos-installer.py" "$APORTS/scripts/dexos-installer.py"
+cp "$ROOT/project/installer/dexos-installer-backend.py" "$APORTS/scripts/dexos-installer-backend.py"
+cp "$ROOT/project/installer/installer-packages.txt" "$APORTS/scripts/installer-packages.txt"
+chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"
 
 python3 - "$APORTS/scripts/mkimage.sh" "$APORTS/scripts/mkimg.base.sh" <<'PY'
 from pathlib import Path

@@ -14,7 +14,7 @@ profile_yahxfce() {
     initrd_ucode="/boot/amd-ucode.img /boot/intel-ucode.img"
     syslinux_timeout=10
     syslinux_prompt=0
-    apks="alpine-base alpine-conf doas bash shadow sudo \
+    apks="alpine-base alpine-conf doas bash shadow sudo python3 py3-gobject3 \
         dbus dbus-x11 dbus-openrc \
         eudev eudev-openrc udev-init-scripts udev-init-scripts-openrc \
         elogind elogind-openrc polkit-elogind \

@@ -43,10 +43,18 @@ grep -q 'pidof xfwm4' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q 'pidof xfdesktop' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q 'pidof xfce4-panel' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q '\[ "\$i" -lt 720 \]' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q '^Exec=doas /usr/local/sbin/dexos-install-root$' rootfs/usr/share/applications/dexos-installer.desktop
-grep -q '^TryExec=doas$' rootfs/usr/share/applications/dexos-installer.desktop
-grep -q '^Terminal=true$' rootfs/usr/share/applications/dexos-installer.desktop
-grep -q '^permit nopass dexos as root cmd /usr/local/sbin/dexos-install-root$' rootfs/etc/doas.d/20-dexos-live.conf
+grep -q '^Exec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
+grep -q '^TryExec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
+grep -q '^Terminal=false$' rootfs/usr/share/applications/dexos-installer.desktop
+grep -q '^permit nopass dexos as root cmd /usr/local/libexec/dexos-installer-backend$' rootfs/etc/doas.d/20-dexos-live.conf
+test -x rootfs/usr/local/bin/dexos-installer
+test -x rootfs/usr/local/libexec/dexos-installer-backend
+test -s rootfs/usr/share/dexos/installer-packages.txt
+grep -q 'Gtk.Assistant' rootfs/usr/local/bin/dexos-installer
+grep -q 'BORRAR ' rootfs/usr/local/libexec/dexos-installer-backend
+grep -q 'setup-alpine' rootfs/usr/local/libexec/dexos-installer-backend && exit 1 || true
+grep -qx 'python3' rootfs/etc/apk/world
+grep -qx 'py3-gobject3' rootfs/etc/apk/world
 grep -q 'Instalar-DexOS.desktop' rootfs/etc/init.d/dexos-live-user
 grep -q '#7a3438' rootfs/etc/skel/.config/gtk-3.0/gtk.css
 grep -q '/usr/share/backgrounds/dexos.svg' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml

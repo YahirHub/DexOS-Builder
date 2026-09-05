@@ -1,5 +1,11 @@
 #!/bin/sh -e
 HOSTNAME="${1:-dexos-live}"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+INSTALLER_ASSETS="$SCRIPT_DIR"
+[ -f "$INSTALLER_ASSETS/dexos-installer.py" ] || INSTALLER_ASSETS="$SCRIPT_DIR/../installer"
+for f in dexos-installer.py dexos-installer-backend.py installer-packages.txt; do
+    [ -f "$INSTALLER_ASSETS/$f" ] || { echo "Falta recurso del instalador: $f" >&2; exit 1; }
+done
 tmp="$(mktemp -d)"
 chmod 0755 "$tmp"
 trap 'rm -rf "$tmp"' EXIT
@@ -37,6 +43,8 @@ alpine-conf
 doas
 bash
 shadow
+python3
+py3-gobject3
 dbus
 dbus-x11
 dbus-openrc
@@ -423,27 +431,24 @@ start_post() {
 }
 EOF_LIGHTDM_INIT
 
+# Sólo el backend validado puede elevarse. La interfaz GTK siempre corre como usuario Live.
 makefile root:root 0600 "$tmp/etc/doas.d/20-dexos-live.conf" <<'EOF_DOAS'
-permit nopass dexos as root cmd /usr/local/sbin/dexos-install-root
+permit nopass dexos as root cmd /usr/local/libexec/dexos-installer-backend
 EOF_DOAS
-
-# Instalador pequeño: wrapper seguro hacia setup-alpine en terminal por ahora.
-# deuda-tecnica: reemplazar por wizard Go completo cuando runtime XFCE esté validado, antes de release estable.
-makefile root:root 0755 "$tmp/usr/local/sbin/dexos-install-root" <<'EOF_INSTALLROOT'
-#!/bin/sh
-exec setup-alpine
-EOF_INSTALLROOT
-mkdir -p "$tmp/usr/share/applications"
+mkdir -p "$tmp/usr/local/bin" "$tmp/usr/local/libexec" "$tmp/usr/share/dexos" "$tmp/usr/share/applications"
+install -m 0755 "$INSTALLER_ASSETS/dexos-installer.py" "$tmp/usr/local/bin/dexos-installer"
+install -m 0755 "$INSTALLER_ASSETS/dexos-installer-backend.py" "$tmp/usr/local/libexec/dexos-installer-backend"
+install -m 0644 "$INSTALLER_ASSETS/installer-packages.txt" "$tmp/usr/share/dexos/installer-packages.txt"
 makefile root:root 0644 "$tmp/usr/share/applications/dexos-installer.desktop" <<'EOF_DESKTOP'
 [Desktop Entry]
 Type=Application
 Name=Instalar DexOS
-Comment=Instalar DexOS en el disco
-Exec=doas /usr/local/sbin/dexos-install-root
-TryExec=doas
+Comment=Instalador gráfico seguro de DexOS
+Exec=/usr/local/bin/dexos-installer
+TryExec=/usr/local/bin/dexos-installer
 Icon=drive-harddisk
-Terminal=true
-StartupNotify=false
+Terminal=false
+StartupNotify=true
 Categories=System;
 EOF_DESKTOP
 

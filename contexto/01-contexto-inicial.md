@@ -68,3 +68,16 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - Causa: XFCE 4.20 crea propiedades de fondo por nombre real de salida (`VGA-*`, `Virtual-*`, `eDP-*`, etc.), por lo que una configuración estática bajo `monitor0` no cubre todas las máquinas.
 - Solución: `dexos-apply-theme` se ejecuta por autostart, espera a que xfdesktop publique sus propiedades, enumera todos los `*/last-image` del canal `xfce4-desktop` y aplica `/usr/share/backgrounds/dexos.svg`, estilo de imagen y color. También refuerza tema/iconos y pinta rojo mate con xsetroot mientras se aplica.
 - Se agregó invalidación inteligente del cache de kernel/initramfs basada en SHA-256 del parche de initramfs, para no rehacer el modloop cuando sólo cambia el APKoVL/tema.
+
+## Instalador gráfico propio DexOS 2026-09-05
+- Se elimina `setup-alpine` del flujo de instalación porque en runtime falló al llegar a timezone y reinició la sesión gráfica.
+- Nuevo diseño: interfaz GTK3 no privilegiada (`/usr/local/bin/dexos-installer`) + backend root mínimo (`/usr/local/libexec/dexos-installer-backend`) autorizado únicamente mediante doas.
+- El backend recibe configuración por stdin JSON; las contraseñas no se escriben en disco ni aparecen en la línea de comandos.
+- Seguridad de disco: sólo enumera discos tipo `disk`, no read-only, >=8 GiB y sin montajes activos; el backend repite la validación antes de borrar. Requiere token exacto `BORRAR /dev/...`.
+- Particionado completo GPT: 2 MiB BIOS Boot, 512 MiB ESP FAT32 y resto ext4 para raíz. Se instala GRUB i386-pc y x86_64-efi con fallback `EFI/BOOT/BOOTX64.EFI`.
+- Instalación offline: `apk --root` usa exclusivamente el repositorio firmado incluido en la ISO durante el bootstrap. Luego el sistema instalado recibe los repos oficiales edge main/community.
+- Timezone: se valida contra `/usr/share/zoneinfo` y se crea `/etc/localtime` directamente; no se llama a `setup-timezone` ni `setup-alpine`.
+- Usuario instalado: cuenta normal en wheel/audio/video/input/netdev/plugdev, root bloqueado y administración mediante doas.
+- El sistema instalado recibe branding DexOS, LightDM sin autologin, NetworkManager, eudev, XFCE y GRUB BIOS+UEFI.
+- Dependencias nuevas del Live para la GUI: `python3` y `py3-gobject3`; GTK3 ya forma parte del stack XFCE.
+- Pruebas: compilación Python, overlay, doas/launcher, symlink-safety, rutas SATA/NVMe, tabla GPT sobre archivo sparse de 9 GiB y disponibilidad de 80 paquetes del sistema destino en el APKINDEX offline.

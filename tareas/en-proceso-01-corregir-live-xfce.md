@@ -42,3 +42,17 @@ Corregir la sesión Live XFCE congelada.
 - [x] Optimizar invalidación de cache para evitar recompilar kernel cuando el parche de initramfs no cambia.
 - [ ] Recompilar ISO final y recrear VM.
 - [ ] Validar visualmente fondo rojo e instalador en la ISO final.
+
+## Instalador gráfico propio 2026-09-05
+- [x] Eliminar dependencia funcional de setup-alpine para instalar.
+- [x] Crear asistente GTK3 de disco, timezone, usuario, resumen y progreso.
+- [x] Crear backend root validado con comunicación JSON.
+- [x] Validar y excluir medios/discos montados.
+- [x] Crear esquema GPT BIOS+UEFI y ext4.
+- [x] Instalar sistema offline desde la propia ISO con apk --root.
+- [x] Configurar timezone directamente, usuario, doas, OpenRC, NetworkManager, XFCE y branding.
+- [x] Instalar GRUB BIOS + UEFI con fallback.
+- [x] Añadir pruebas de seguridad y esquema GPT.
+- [ ] Recompilar ISO con python3 + py3-gobject3.
+- [ ] Validar que la GUI abre en el Live.
+- [ ] Realizar instalación completa en disco virtual y arrancar desde ese disco.
