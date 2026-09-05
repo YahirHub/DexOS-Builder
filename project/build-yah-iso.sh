@@ -53,7 +53,13 @@ p=Path(sys.argv[1]); s=p.read_text()
 s=re.sub(r'mksquashfs \$MODLOOP "\$STAGING/\$MODIMG" \$MKSQUASHFS_OPTS -comp (?:xz|zstd)(?: -Xcompression-level 15)? -exit-on-error(?: \$mksfs)?','mksquashfs $MODLOOP "$STAGING/$MODIMG" $MKSQUASHFS_OPTS -comp zstd -Xcompression-level 15 -exit-on-error',s)
 p.write_text(s)
 PY
-rm -rf "$CACHE"/apkovl_* "$CACHE"/kernel_x86_64_lts_* "$CACHE"/image-*-x86_64-yahxfce "$ISO" "$ISO.sha256" "$ISO.sha512"
+PATCH_HASH="$(sha256sum "$ROOT/project/mkimage/patch-initramfs-init.py" | awk '{print $1}')"
+PATCH_STAMP="$CACHE/.dexos-initramfs-patch.sha256"
+if [[ ! -f "$PATCH_STAMP" ]] || [[ "$(cat "$PATCH_STAMP" 2>/dev/null || true)" != "$PATCH_HASH" ]]; then
+  rm -rf "$CACHE"/kernel_x86_64_lts_*
+  printf '%s\n' "$PATCH_HASH" > "$PATCH_STAMP"
+fi
+rm -rf "$CACHE"/apkovl_* "$CACHE"/image-*-x86_64-yahxfce "$ISO" "$ISO.sha256" "$ISO.sha512"
 proot -i 1000:1000 -R "$ALPINE_ROOT" -b "$ROOT:/work" -w /work/project/mkimage \
   /usr/bin/env HOME=/work/build-home PACKAGER_PRIVKEY=/work/build-home/.config/abuild/yah-alpine.rsa PACKAGER_PUBKEY=/work/build-home/.config/abuild/yah-alpine.rsa.pub YAH_SKIP_XORRISO=1 \
   /bin/sh /work/aports/scripts/mkimage.sh --tag edge --outdir /work/out --workdir /work/cache --arch x86_64 --profile yahxfce \

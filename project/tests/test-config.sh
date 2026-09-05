@@ -54,4 +54,9 @@ grep -q '^NAME="DexOS"$' rootfs/etc/os-release
 grep -q '^PRETTY_NAME="DexOS Live"$' rootfs/etc/os-release
 grep -q '^DexOS Live$' rootfs/etc/issue
 grep -q '^Welcome to DexOS Live$' rootfs/etc/motd
+test -f rootfs/etc/xdg/autostart/dexos-branding.desktop
+grep -q '^Exec=/usr/local/bin/dexos-apply-theme$' rootfs/etc/xdg/autostart/dexos-branding.desktop
+grep -q "wall=/usr/share/backgrounds/dexos.svg" rootfs/usr/local/bin/dexos-apply-theme
+grep -q "grep '/last-image\$'" rootfs/usr/local/bin/dexos-apply-theme
+grep -q "xsetroot -solid '#6b2a2e'" rootfs/usr/local/bin/dexos-apply-theme
 echo 'test-config: OK'

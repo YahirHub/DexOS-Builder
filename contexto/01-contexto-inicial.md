@@ -62,3 +62,9 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - Si el proceso LightDM realmente muere, el monitor retira el splash y muestra un diagnóstico en tty1.
 - El instalador se simplificó a Desktop Entry estándar: `Terminal=true` + `Exec=doas /usr/local/sbin/dexos-install-root`, eliminando dependencia del wrapper/opciones de `xfce4-terminal`.
 - Identidad de consola: se agregan `/etc/os-release`, `/etc/issue` y `/etc/motd` con nombre DexOS; el menú GRUB/Syslinux se renombra a `DexOS Live`.
+
+## Tema rojo dinámico por monitor 2026-09-05
+- La primera prueba runtime posterior al arreglo de LightDM mostró que XFCE sí abría, pero el escritorio usaba un fondo azul/verde del monitor detectado en lugar del `monitor0` preconfigurado.
+- Causa: XFCE 4.20 crea propiedades de fondo por nombre real de salida (`VGA-*`, `Virtual-*`, `eDP-*`, etc.), por lo que una configuración estática bajo `monitor0` no cubre todas las máquinas.
+- Solución: `dexos-apply-theme` se ejecuta por autostart, espera a que xfdesktop publique sus propiedades, enumera todos los `*/last-image` del canal `xfce4-desktop` y aplica `/usr/share/backgrounds/dexos.svg`, estilo de imagen y color. También refuerza tema/iconos y pinta rojo mate con xsetroot mientras se aplica.
+- Se agregó invalidación inteligente del cache de kernel/initramfs basada en SHA-256 del parche de initramfs, para no rehacer el modloop cuando sólo cambia el APKoVL/tema.

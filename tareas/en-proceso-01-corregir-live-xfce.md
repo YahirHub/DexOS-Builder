@@ -34,3 +34,11 @@ Corregir la sesión Live XFCE congelada.
 - [x] Actualizar pruebas de regresión.
 - [ ] Recompilar ISO y recrear VM.
 - [ ] Validar escritorio e instalador en runtime.
+
+## Ajuste visual por salida real
+- [x] Detectar que XFCE usa propiedades de fondo por nombre real de monitor.
+- [x] Aplicar wallpaper/tema DexOS dinámicamente a todas las salidas detectadas.
+- [x] Añadir prueba estática del autostart de branding.
+- [x] Optimizar invalidación de cache para evitar recompilar kernel cuando el parche de initramfs no cambia.
+- [ ] Recompilar ISO final y recrear VM.
+- [ ] Validar visualmente fondo rojo e instalador en la ISO final.

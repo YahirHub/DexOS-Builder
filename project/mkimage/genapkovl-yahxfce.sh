@@ -195,6 +195,46 @@ makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-des
 <channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/backgrounds/dexos.svg"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
 EOF_DESKTOP_XFCE
 
+# Aplica la identidad DexOS al monitor real que XFCE detecte (VGA-1, Virtual-1, eDP-1, etc.).
+makefile root:root 0755 "$tmp/usr/local/bin/dexos-apply-theme" <<'EOF_APPLY_THEME'
+#!/bin/sh
+wall=/usr/share/backgrounds/dexos.svg
+/usr/bin/xsetroot -solid '#6b2a2e' 2>/dev/null || true
+
+i=0
+while [ "$i" -lt 40 ]; do
+    props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
+    [ -n "$props" ] && break
+    sleep 0.25
+    i=$((i + 1))
+done
+
+printf '%s\n' "$props" | while IFS= read -r prop; do
+    [ -n "$prop" ] || continue
+    xfconf-query -c xfce4-desktop -p "$prop" -s "$wall" 2>/dev/null || true
+    base=${prop%/last-image}
+    xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || true
+    xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || true
+done
+
+# Reaplicar tema/acento después de que xfsettingsd esté activo.
+xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
+xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
+exit 0
+EOF_APPLY_THEME
+mkdir -p "$tmp/etc/xdg/autostart"
+makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-branding.desktop" <<'EOF_BRAND_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=DexOS Branding
+Comment=Apply DexOS matte-red desktop identity
+Exec=/usr/local/bin/dexos-apply-theme
+OnlyShowIn=XFCE;
+Terminal=false
+StartupNotify=false
+NoDisplay=true
+EOF_BRAND_AUTOSTART
+
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml" <<'EOF_PWR'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-power-manager" version="1.0"><property name="xfce4-power-manager" type="empty"><property name="show-tray-icon" type="int" value="1"/><property name="brightness-switch" type="int" value="1"/><property name="handle-brightness-keys" type="bool" value="true"/><property name="general-notification" type="bool" value="true"/></property></channel>
