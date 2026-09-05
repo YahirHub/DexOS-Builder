@@ -1,13 +1,13 @@
 profile_yahxfce() {
     profile_standard
     initfs_cmdline="$initfs_cmdline splash"
-    profile_abbrev="yahxfce"
-    title="Yah Alpine XFCE Live"
-    desc="Alpine Linux edge con XFCE ligero para PC y laptop."
+    profile_abbrev="dexos"
+    title="DexOS Live"
+    desc="DexOS: sistema Live ligero basado en Alpine Linux con XFCE para PC y laptop."
     arch="x86_64"
-    image_name="yah-alpine-xfce"
-    output_filename="yah-alpine-xfce-edge-x86_64.iso"
-    hostname="yah-live"
+    image_name="DexOS"
+    output_filename="DexOS-edge-x86_64.iso"
+    hostname="dexos-live"
     apkovl="genapkovl-yahxfce.sh"
     kernel_flavors="lts"
     boot_addons="amd-ucode intel-ucode"
@@ -18,7 +18,7 @@ profile_yahxfce() {
         dbus dbus-x11 dbus-openrc \
         eudev eudev-openrc udev-init-scripts udev-init-scripts-openrc \
         elogind elogind-openrc polkit-elogind \
-        xorg-server xinit xf86-input-libinput xf86-video-vesa xf86-video-vmware xf86-video-qxl xf86-video-amdgpu \
+        xorg-server xinit xsetroot xf86-input-libinput xf86-video-vesa xf86-video-vmware xf86-video-qxl xf86-video-amdgpu \
         mesa-dri-gallium mesa-gl \
         xfce4 xfce4-terminal xfce4-screensaver xfce4-whiskermenu-plugin xfce4-power-manager xfce4-battery-plugin \
         xfce4-pulseaudio-plugin xfce4-notifyd xfce4-taskmanager xfce4-screenshooter \

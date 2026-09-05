@@ -2,26 +2,21 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
-cp "$ROOT/alpine-root/usr/share/mkinitfs/initramfs-init" "$TMP/initramfs-init"
-# Use a pristine copy when the working root is already patched.
-if grep -q YAH_SPLASH_PROGRESS_BEGIN "$TMP/initramfs-init"; then
-    python3 - "$TMP/initramfs-init" <<'PY'
-from pathlib import Path
-import sys
-p=Path(sys.argv[1]); s=p.read_text()
-# This test cannot safely reverse a patch; validate the already-patched source instead.
-assert 'YAH_SPLASH_PROGRESS_BEGIN' in s
-PY
-else
-    python3 "$ROOT/project/mkimage/patch-initramfs-init.py" "$TMP/initramfs-init"
-fi
+APK=$(find "$ROOT/cache" "$ROOT/alpine-root" -type f -name 'mkinitfs-*.apk' -print | sort | tail -1)
+test -n "$APK"
+tar -xOzf "$APK" usr/share/mkinitfs/initramfs-init > "$TMP/initramfs-init"
+python3 "$ROOT/project/mkimage/patch-initramfs-init.py" "$TMP/initramfs-init"
 sh -n "$TMP/initramfs-init"
 grep -q 'YAH_SPLASH_PROGRESS_BEGIN' "$TMP/initramfs-init"
 grep -q -- '--progress-fd 3' "$TMP/initramfs-init"
-grep -q 'yah_splash_keywatch' "$TMP/initramfs-init"
+grep -q 'dexos_splash_keywatch' "$TMP/initramfs-init"
 grep -q 'chvt 1' "$TMP/initramfs-init"
 grep -q 'chvt 16' "$TMP/initramfs-init"
-grep -q 'BAR_WIDTH=$bar_width' "$TMP/initramfs-init"
+grep -q 'usr/share/dexos/fbsplash.ppm' "$TMP/initramfs-init"
+grep -q 'dexos-splash-progress' "$TMP/initramfs-init"
+grep -q 'BAR_R=170' "$TMP/initramfs-init"
+grep -q 'BAR_G=72' "$TMP/initramfs-init"
+grep -q 'BAR_B=76' "$TMP/initramfs-init"
 test -s "$ROOT/project/boot/fbsplash.ppm"
 head -c 2 "$ROOT/project/boot/fbsplash.ppm" | grep -q '^P6$'
 echo 'test-initramfs-splash: OK'

@@ -9,8 +9,8 @@ BUILD_HOME="$ROOT/build-home"
 KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
-ISO="$OUT/yah-alpine-xfce-edge-x86_64.iso"
-VOLID="alpine-yahxfce edge x86_64"
+ISO="$OUT/DexOS-edge-x86_64.iso"
+VOLID="alpine-dexos edge x86_64"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
@@ -37,8 +37,12 @@ if 'YAH_SKIP_XORRISO' not in b:
     b=b[:idx]+marker+b[idx:]
 base.write_text(b)
 PY
-# Patch Alpine diskless initramfs so the native fbsplash shows real APK progress
-# and ESC toggles boot details while the Live root is being assembled.
+# Restore a pristine mkinitfs init script from the cached Alpine package on every build,
+# then apply the DexOS splash patch. This makes splash changes reproducible/idempotent.
+MKINITFS_APK="$(find "$CACHE" "$ALPINE_ROOT" -type f -name 'mkinitfs-*.apk' -print | sort | tail -1)"
+[[ -n "$MKINITFS_APK" ]]
+tar -xOzf "$MKINITFS_APK" usr/share/mkinitfs/initramfs-init > "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
+chmod 0755 "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
 python3 "$ROOT/project/mkimage/patch-initramfs-init.py" "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
 sh -n "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
 

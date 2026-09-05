@@ -46,3 +46,11 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - ESC alterna entre tty16 (splash) y tty1 (detalles reales). Antes de `switch_root` hay un watcher en initramfs; OpenRC toma el relevo con `yah-splash-keys`.
 - LightDM se sobrescribe en el APKoVL con una compuerta de readiness: necesita localmount, D-Bus, elogind, NetworkManager y `yah-live-user`; espera `udevadm settle`, inicia Xorg y sólo retira el splash cuando detecta `xfce4-session`.
 - Si XFCE no queda listo dentro del límite, se retira el splash y se cambia a tty1 para mostrar el error en vez de dejar una pantalla negra.
+
+## DexOS: correcciones de splash, transición e instalador 2026-09-05
+- Feedback runtime: ESC mostraba logs correctamente, pero al volver sólo se repintaba la barra sobre el framebuffer con texto. Causa: `fbsplash` recupera el VT pero no redibuja la imagen completa al re-adquirirlo.
+- Solución: el initramfs copia la imagen/config de splash al root Live, conserva el porcentaje actual y tanto el watcher de initramfs como el de OpenRC ejecutan un repintado one-shot de `fbsplash` al volver a tty16, luego restauran la barra al porcentaje vigente.
+- Feedback runtime: existía un intervalo negro entre el splash y el primer frame completo de XFCE. Solución: LightDM ejecuta `dexos-xsetup` con `xsetroot -solid '#6b2a2e'` inmediatamente al crear Xorg; además espera `xfce4-session`, `xfwm4`, `xfdesktop` y `xfce4-panel` antes de considerar listo el escritorio.
+- Feedback runtime: el instalador no abría. Causa: el `.desktop` usaba `Exec=doas /usr/local/bin/dexos-installer`, pero doas sólo autorizaba el comando root final. Solución: el acceso directo ejecuta el wrapper como usuario; el wrapper abre `xfce4-terminal --command="doas /usr/local/sbin/dexos-install-root"`; sólo `setup-alpine` se eleva.
+- Rebranding solicitado: sistema visible `DexOS`, hostname `dexos-live`, usuario Live `dexos`, ISO `DexOS-edge-x86_64.iso`, volumen `alpine-dexos edge x86_64`, splash/fondo/acento en rojo mate.
+- Para evitar parches acumulativos del initramfs, cada build restaura `initramfs-init` desde el APK cacheado de `mkinitfs` y después aplica el parche DexOS.

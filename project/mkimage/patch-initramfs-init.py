@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch Alpine initramfs-init for Yah Live bootsplash progress and ESC log toggle."""
+"""Patch Alpine initramfs-init for DexOS Live bootsplash progress and ESC log toggle."""
 from pathlib import Path
 import sys
 
@@ -15,7 +15,7 @@ helpers = r'''splashfile=/.splash.ctrl
 
 # YAH_SPLASH_PROGRESS_BEGIN
 # Feed BusyBox fbsplash with real apk-tools progress and allow ESC to toggle tty1 logs.
-yah_splash_progress_reader() {
+dexos_splash_progress_reader() {
 	[ -p "$sysroot/$splashfile" ] || return 0
 	exec 4>"$sysroot/$splashfile" || return 0
 	printf '3\n' >&4
@@ -31,8 +31,9 @@ yah_splash_progress_reader() {
 				[ "$pct" -gt 88 ] && pct=88
 				if [ "$pct" -gt "$last" ]; then
 					printf '%s\n' "$pct" >&4
+					printf '%s\n' "$pct" > "$sysroot/.dexos-splash-progress"
 					last=$pct
-					if [ -e "$sysroot/.yah-show-boot-log" ]; then
+					if [ -e "$sysroot/.dexos-show-boot-log" ]; then
 						printf 'Cargando sistema Live: %s%%\n' "$pct" > /dev/tty1
 					fi
 				fi
@@ -41,7 +42,7 @@ yah_splash_progress_reader() {
 	done
 }
 
-yah_splash_keywatch() {
+dexos_splash_keywatch() {
 	esc="$(printf '\033')"
 	current=16
 	while [ -p "$sysroot/$splashfile" ]; do
@@ -52,14 +53,22 @@ yah_splash_keywatch() {
 		IFS= read -r -n 1 key < "$dev" || continue
 		[ "$key" = "$esc" ] || continue
 		if [ "$current" -eq 16 ]; then
-			touch "$sysroot/.yah-show-boot-log"
-			printf '\033[H\033[2JYah Alpine — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
+			touch "$sysroot/.dexos-show-boot-log"
+			printf '\033[H\033[2JDexOS — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
 			dmesg > /dev/tty1 2>/dev/null || true
 			chvt 1
 			current=1
 		else
-			rm -f "$sysroot/.yah-show-boot-log"
+			rm -f "$sysroot/.dexos-show-boot-log"
 			chvt 16
+			sleep 0.05
+			if [ -r "$sysroot/usr/share/dexos/fbsplash.ppm" ] && [ -r "$sysroot/etc/dexos/fbsplash.cfg" ]; then
+				fbsplash -s "$sysroot/usr/share/dexos/fbsplash.ppm" -d /dev/fb0 -i "$sysroot/etc/dexos/fbsplash.cfg" >/dev/null 2>&1 || true
+			fi
+			if [ -r "$sysroot/.dexos-splash-progress" ]; then
+				pct=$(cat "$sysroot/.dexos-splash-progress" 2>/dev/null || echo 3)
+				printf '%s\n' "$pct" > "$sysroot/$splashfile" 2>/dev/null || true
+			fi
 			current=16
 		fi
 	done
@@ -90,9 +99,9 @@ BAR_LEFT=$bar_left
 BAR_TOP=$bar_top
 BAR_WIDTH=$bar_width
 BAR_HEIGHT=8
-BAR_R=68
-BAR_G=181
-BAR_B=230
+BAR_R=170
+BAR_G=72
+BAR_B=76
 EOF_YAH_SPLASH
 '''
 if old_cfg not in s:
@@ -102,10 +111,14 @@ s = s.replace(old_cfg, new_cfg, 1)
 old_start = '''\tsetsid fbsplash -T 16 -s "$fbsplash" -i "$config" -f "$sysroot/$splashfile" &
 \teend 0
 '''
-new_start = '''\tsetsid fbsplash -T 16 -s "$fbsplash" -i "$config" -f "$sysroot/$splashfile" &
+new_start = '''\tmkdir -p "$sysroot/usr/share/dexos" "$sysroot/etc/dexos"
+\tcp "$fbsplash" "$sysroot/usr/share/dexos/fbsplash.ppm" 2>/dev/null || true
+\tcp "$config" "$sysroot/etc/dexos/fbsplash.cfg" 2>/dev/null || true
+\tprintf '3\n' > "$sysroot/.dexos-splash-progress"
+\tsetsid fbsplash -T 16 -s "$fbsplash" -i "$config" -f "$sysroot/$splashfile" &
 \t# ESC toggles between splash (tty16) and real boot details (tty1).
-\tyah_splash_keywatch &
-\techo $! > "$sysroot/.yah-initramfs-splash-key.pid"
+\tdexos_splash_keywatch &
+\techo $! > "$sysroot/.dexos-initramfs-splash-key.pid"
 \teend 0
 '''
 if old_start not in s:
@@ -116,14 +129,14 @@ old_bind = '''$MOCK mount -o bind /sys "$sysroot"/sys
 $MOCK mount -o bind /proc "$sysroot"/proc
 $MOCK mount -o bind /dev "$sysroot"/dev
 '''
-new_bind = old_bind + '''yah_progress_fifo=
+new_bind = old_bind + '''dexos_progress_fifo=
 if [ "$KOPT_splash" != no ] && [ -p "$sysroot/$splashfile" ]; then
-\tyah_progress_fifo=/tmp/.yah-apk-progress
-\trm -f "$yah_progress_fifo"
-\tmkfifo "$yah_progress_fifo"
-\tyah_splash_progress_reader < "$yah_progress_fifo" &
-\tyah_progress_pid=$!
-\texec 3>"$yah_progress_fifo"
+\tdexos_progress_fifo=/tmp/.dexos-apk-progress
+\trm -f "$dexos_progress_fifo"
+\tmkfifo "$dexos_progress_fifo"
+\tdexos_splash_progress_reader < "$dexos_progress_fifo" &
+\tdexos_progress_pid=$!
+\texec 3>"$dexos_progress_fifo"
 \tapkflags="$apkflags --progress-fd 3"
 fi
 '''
@@ -136,11 +149,12 @@ $MOCK umount "$sysroot"/sys "$sysroot"/proc "$sysroot"/dev
 eend 0
 '''
 new_after = '''fi
-if [ -n "$yah_progress_fifo" ]; then
+if [ -n "$dexos_progress_fifo" ]; then
 \texec 3>&-
-\twait "$yah_progress_pid" 2>/dev/null || true
+\twait "$dexos_progress_pid" 2>/dev/null || true
+\tprintf '90\n' > "$sysroot/.dexos-splash-progress"
 \tprintf '90\\n' > "$sysroot/$splashfile" 2>/dev/null || true
-\trm -f "$yah_progress_fifo"
+\trm -f "$dexos_progress_fifo"
 fi
 $MOCK umount "$sysroot"/sys "$sysroot"/proc "$sysroot"/dev
 eend 0
@@ -153,9 +167,9 @@ old_switch = '''[ "$KOPT_splash" = "init" ] && echo exit > "$sysroot/$splashfile
 echo ""
 '''
 new_switch = '''# Stop the initramfs ESC watcher; OpenRC starts a new one after switch_root.
-if [ -r "$sysroot/.yah-initramfs-splash-key.pid" ]; then
-\tkill "$(cat "$sysroot/.yah-initramfs-splash-key.pid")" 2>/dev/null || true
-\trm -f "$sysroot/.yah-initramfs-splash-key.pid"
+if [ -r "$sysroot/.dexos-initramfs-splash-key.pid" ]; then
+\tkill "$(cat "$sysroot/.dexos-initramfs-splash-key.pid")" 2>/dev/null || true
+\trm -f "$sysroot/.dexos-initramfs-splash-key.pid"
 fi
 stty -F /dev/tty1 sane 2>/dev/null || true
 stty -F /dev/tty16 sane 2>/dev/null || true

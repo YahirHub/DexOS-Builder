@@ -1,5 +1,5 @@
 #!/bin/sh -e
-HOSTNAME="${1:-yah-live}"
+HOSTNAME="${1:-dexos-live}"
 tmp="$(mktemp -d)"
 chmod 0755 "$tmp"
 trap 'rm -rf "$tmp"' EXIT
@@ -33,6 +33,7 @@ elogind-openrc
 polkit-elogind
 xorg-server
 xinit
+xsetroot
 xf86-input-libinput
 xf86-video-vesa
 xf86-video-vmware
@@ -117,27 +118,28 @@ managed=true
 wifi.backend=wpa_supplicant
 wifi.scan-rand-mac-address=yes
 EOF_NM
-makefile root:root 0644 "$tmp/etc/NetworkManager/conf.d/10-yah-live.conf" <<'EOF_NMC'
+makefile root:root 0644 "$tmp/etc/NetworkManager/conf.d/10-dexos-live.conf" <<'EOF_NMC'
 [connection]
 wifi.powersave=2
 EOF_NMC
 
 # Session Live: user normal + elogind + LightDM. Nunca se inicia XFCE como root.
 mkdir -p "$tmp/etc/lightdm/lightdm.conf.d"
-makefile root:root 0644 "$tmp/etc/lightdm/lightdm.conf.d/10-yah-live.conf" <<'EOF_LDM'
+makefile root:root 0644 "$tmp/etc/lightdm/lightdm.conf.d/10-dexos-live.conf" <<'EOF_LDM'
 [LightDM]
 logind-check-graphical=false
 
 [Seat:*]
+display-setup-script=/usr/local/sbin/dexos-xsetup
 greeter-session=lightdm-gtk-greeter
 user-session=xfce
-autologin-user=yah
+autologin-user=dexos
 autologin-user-timeout=0
 autologin-session=xfce
 EOF_LDM
 makefile root:root 0644 "$tmp/etc/lightdm/lightdm-gtk-greeter.conf" <<'EOF_GREETER'
 [greeter]
-background=/usr/share/backgrounds/yah-alpine.svg
+background=/usr/share/backgrounds/dexos.svg
 theme-name=adw-gtk3-dark
 icon-theme-name=Adwaita-Xfce
 font-name=DejaVu Sans 11
@@ -147,39 +149,63 @@ user-background=false
 EOF_GREETER
 
 mkdir -p "$tmp/usr/share/backgrounds"
-makefile root:root 0644 "$tmp/usr/share/backgrounds/yah-alpine.svg" <<'EOF_SVG'
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#102033"/><stop offset=".55" stop-color="#163a5f"/><stop offset="1" stop-color="#1f6f8b"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#g)"/><path d="M0 880 L390 520 L620 735 L930 410 L1240 720 L1510 500 L1920 850 L1920 1080 L0 1080 Z" fill="#0a1624" opacity=".62"/><text x="110" y="170" font-family="DejaVu Sans" font-size="76" fill="#f2fbff" font-weight="600">Yah Alpine</text><text x="116" y="225" font-family="DejaVu Sans" font-size="28" fill="#b9ddec">XFCE • ligero • rápido</text></svg>
+makefile root:root 0644 "$tmp/usr/share/backgrounds/dexos.svg" <<'EOF_SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b1719"/><stop offset=".58" stop-color="#512629"/><stop offset="1" stop-color="#6b2a2e"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#g)"/><path d="M0 880 L390 520 L620 735 L930 410 L1240 720 L1510 500 L1920 850 L1920 1080 L0 1080 Z" fill="#1d1012" opacity=".72"/><circle cx="1680" cy="180" r="120" fill="#8f3e42" opacity=".15"/><text x="110" y="170" font-family="DejaVu Sans" font-size="82" fill="#f0e5e5" font-weight="600">DexOS</text><text x="116" y="226" font-family="DejaVu Sans" font-size="28" fill="#d1a8aa">XFCE • ligero • estable</text></svg>
 EOF_SVG
+
+# Xorg pinta rojo mate inmediatamente, antes de que XFCE termine su primer frame.
+makefile root:root 0755 "$tmp/usr/local/sbin/dexos-xsetup" <<'EOF_XSETUP'
+#!/bin/sh
+exec /usr/bin/xsetroot -solid '#6b2a2e'
+EOF_XSETUP
+
+mkdir -p "$tmp/etc/skel/.config/gtk-3.0"
+makefile root:root 0644 "$tmp/etc/skel/.config/gtk-3.0/gtk.css" <<'EOF_GTKCSS'
+@define-color theme_selected_bg_color #7a3438;
+@define-color theme_selected_fg_color #f7eeee;
+@define-color accent_bg_color #7a3438;
+@define-color accent_fg_color #f7eeee;
+selection { background-color: #7a3438; color: #f7eeee; }
+*:selected { background-color: #7a3438; }
+EOF_GTKCSS
 
 mkdir -p "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml" <<'EOF_XSET'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="adw-gtk3-dark"/><property name="IconThemeName" type="string" value="Adwaita-Xfce"/></property><property name="Gtk" type="empty"><property name="FontName" type="string" value="DejaVu Sans 10"/></property></channel>
 EOF_XSET
+makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml" <<'EOF_DESKTOP_XFCE'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/backgrounds/dexos.svg"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
+EOF_DESKTOP_XFCE
+
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml" <<'EOF_PWR'
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-power-manager" version="1.0"><property name="xfce4-power-manager" type="empty"><property name="show-tray-icon" type="int" value="1"/><property name="brightness-switch" type="int" value="1"/><property name="handle-brightness-keys" type="bool" value="true"/><property name="general-notification" type="bool" value="true"/></property></channel>
 EOF_PWR
 
 # Crea el usuario live antes de LightDM.
-makefile root:root 0755 "$tmp/etc/init.d/yah-live-user" <<'EOF_USER'
+makefile root:root 0755 "$tmp/etc/init.d/dexos-live-user" <<'EOF_USER'
 #!/sbin/openrc-run
-name="Yah live user"
-description="Create the unprivileged Yah Live desktop account"
+name="DexOS Live user"
+description="Create the unprivileged DexOS Live desktop account"
 depend(){ need localmount; before lightdm; }
 start(){
-    if ! id yah >/dev/null 2>&1; then
-        adduser -D -h /home/yah -s /bin/ash yah
-        for g in wheel audio video input netdev plugdev; do getent group "$g" >/dev/null 2>&1 && addgroup yah "$g" || true; done
+    if ! id dexos >/dev/null 2>&1; then
+        adduser -D -h /home/dexos -s /bin/ash dexos
+        for g in wheel audio video input netdev plugdev; do getent group "$g" >/dev/null 2>&1 && addgroup dexos "$g" || true; done
     fi
-    passwd -d yah >/dev/null 2>&1 || true
-    mkdir -p /home/yah/Desktop /home/yah/.config/autostart
-    chown -R yah:yah /home/yah
+    passwd -d dexos >/dev/null 2>&1 || true
+    mkdir -p /home/dexos/Desktop /home/dexos/.config/autostart
+    if [ -f /usr/share/applications/dexos-installer.desktop ]; then
+        install -m 0755 /usr/share/applications/dexos-installer.desktop /home/dexos/Desktop/Instalar-DexOS.desktop
+    fi
+    chown -R dexos:dexos /home/dexos
 }
 EOF_USER
 
 # Mantiene el splash visible durante OpenRC y permite ESC para alternar detalles.
-makefile root:root 0755 "$tmp/usr/local/sbin/yah-splash-keys" <<'EOF_SPLASH_KEYS'
+makefile root:root 0755 "$tmp/usr/local/sbin/dexos-splash-keys" <<'EOF_SPLASH_KEYS'
 #!/bin/sh
 esc="$(printf '\033')"
 current=16
@@ -194,35 +220,44 @@ while [ -p /.splash.ctrl ]; do
     IFS= read -r -n 1 key < "$dev" || continue
     [ "$key" = "$esc" ] || continue
     if [ "$current" -eq 16 ]; then
-        touch /.yah-show-boot-log
-        printf '\033[H\033[2JYah Alpine — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
+        touch /.dexos-show-boot-log
+        printf '\033[H\033[2JDexOS — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
         dmesg > /dev/tty1 2>/dev/null || true
         rc-status -a > /dev/tty1 2>/dev/null || true
         chvt 1
         current=1
     else
-        rm -f /.yah-show-boot-log
+        rm -f /.dexos-show-boot-log
         chvt 16
+        sleep 0.05
+        if [ -r /usr/share/dexos/fbsplash.ppm ] && [ -r /etc/dexos/fbsplash.cfg ]; then
+            fbsplash -s /usr/share/dexos/fbsplash.ppm -d /dev/fb0 -i /etc/dexos/fbsplash.cfg >/dev/null 2>&1 || true
+        fi
+        if [ -r /.dexos-splash-progress ] && [ -p /.splash.ctrl ]; then
+            pct=$(cat /.dexos-splash-progress 2>/dev/null || echo 91)
+            timeout 1 sh -c "printf '%s\n' '$pct' > /.splash.ctrl" 2>/dev/null || true
+        fi
         current=16
     fi
 done
 EOF_SPLASH_KEYS
 
-makefile root:root 0755 "$tmp/etc/init.d/yah-splash-keys" <<'EOF_SPLASH_SERVICE'
+makefile root:root 0755 "$tmp/etc/init.d/dexos-splash-keys" <<'EOF_SPLASH_SERVICE'
 #!/sbin/openrc-run
-name="Yah boot detail toggle"
+name="DexOS boot detail toggle"
 description="Allow ESC to toggle between splash and boot details"
 depend(){ need localmount; before lightdm; }
 start(){
     [ -p /.splash.ctrl ] || return 0
+    printf '91\n' > /.dexos-splash-progress
     printf '91\n' > /.splash.ctrl 2>/dev/null || true
-    /usr/local/sbin/yah-splash-keys &
-    echo $! > /run/yah-splash-keys.pid
+    /usr/local/sbin/dexos-splash-keys &
+    echo $! > /run/dexos-splash-keys.pid
 }
 stop(){
-    if [ -r /run/yah-splash-keys.pid ]; then
-        kill "$(cat /run/yah-splash-keys.pid)" 2>/dev/null || true
-        rm -f /run/yah-splash-keys.pid
+    if [ -r /run/dexos-splash-keys.pid ]; then
+        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
+        rm -f /run/dexos-splash-keys.pid
     fi
     stty -F /dev/tty1 sane 2>/dev/null || true
     stty -F /dev/tty16 sane 2>/dev/null || true
@@ -234,24 +269,25 @@ makefile root:root 0755 "$tmp/etc/init.d/lightdm" <<'EOF_LIGHTDM_INIT'
 #!/sbin/openrc-run
 supervisor=supervise-daemon
 name="Display Manager"
-description="Lightweight Display Manager with Yah Live readiness gate"
+description="Lightweight Display Manager with DexOS Live readiness gate"
 command=/usr/bin/lightdm
 
 depend() {
     provide display-manager
-    need localmount dbus elogind networkmanager yah-live-user
-    after udev-postmount yah-splash-keys
+    need localmount dbus elogind networkmanager dexos-live-user
+    after udev-postmount dexos-splash-keys
 }
 
 splash_progress() {
+    printf '%s\n' "$1" > /.dexos-splash-progress
     [ -p /.splash.ctrl ] || return 0
     timeout 2 sh -c "printf '%s\n' '$1' > /.splash.ctrl" 2>/dev/null || true
 }
 
 splash_finish() {
-    if [ -r /run/yah-splash-keys.pid ]; then
-        kill "$(cat /run/yah-splash-keys.pid)" 2>/dev/null || true
-        rm -f /run/yah-splash-keys.pid
+    if [ -r /run/dexos-splash-keys.pid ]; then
+        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
+        rm -f /run/dexos-splash-keys.pid
     fi
     stty -F /dev/tty1 sane 2>/dev/null || true
     stty -F /dev/tty16 sane 2>/dev/null || true
@@ -259,7 +295,7 @@ splash_finish() {
         timeout 2 sh -c "printf 'exit\n' > /.splash.ctrl" 2>/dev/null || true
         rm -f /.splash.ctrl
     fi
-    rm -f /.yah-show-boot-log
+    rm -f /.dexos-show-boot-log /.dexos-splash-progress
 }
 
 start_pre() {
@@ -273,9 +309,12 @@ start_post() {
     splash_progress 97
     i=0
     while [ "$i" -lt 80 ]; do
-        if pidof xfce4-session >/dev/null 2>&1; then
+        if pidof xfce4-session >/dev/null 2>&1 \
+           && pidof xfwm4 >/dev/null 2>&1 \
+           && pidof xfdesktop >/dev/null 2>&1 \
+           && pidof xfce4-panel >/dev/null 2>&1; then
             splash_progress 100
-            sleep 1
+            sleep 0.75
             splash_finish
             return 0
         fi
@@ -289,27 +328,29 @@ start_post() {
 }
 EOF_LIGHTDM_INIT
 
-makefile root:root 0600 "$tmp/etc/doas.d/20-yah-live.conf" <<'EOF_DOAS'
-permit nopass yah as root cmd /usr/local/sbin/yah-install-root
+makefile root:root 0600 "$tmp/etc/doas.d/20-dexos-live.conf" <<'EOF_DOAS'
+permit nopass dexos as root cmd /usr/local/sbin/dexos-install-root
 EOF_DOAS
 
 # Instalador pequeño: wrapper seguro hacia setup-alpine en terminal por ahora.
 # deuda-tecnica: reemplazar por wizard Go completo cuando runtime XFCE esté validado, antes de release estable.
-makefile root:root 0755 "$tmp/usr/local/bin/yah-installer" <<'EOF_INSTALLER'
+makefile root:root 0755 "$tmp/usr/local/bin/dexos-installer" <<'EOF_INSTALLER'
 #!/bin/sh
-exec xfce4-terminal --title="Instalar Yah Alpine" --hold -e "doas /usr/local/sbin/yah-install-root"
+exec xfce4-terminal --title="Instalar DexOS" --hold --command="doas /usr/local/sbin/dexos-install-root"
 EOF_INSTALLER
-makefile root:root 0755 "$tmp/usr/local/sbin/yah-install-root" <<'EOF_INSTALLROOT'
+makefile root:root 0755 "$tmp/usr/local/sbin/dexos-install-root" <<'EOF_INSTALLROOT'
 #!/bin/sh
 exec setup-alpine
 EOF_INSTALLROOT
 mkdir -p "$tmp/usr/share/applications"
-makefile root:root 0644 "$tmp/usr/share/applications/yah-installer.desktop" <<'EOF_DESKTOP'
+makefile root:root 0644 "$tmp/usr/share/applications/dexos-installer.desktop" <<'EOF_DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Instalar Yah Alpine
+Name=Instalar DexOS
 Comment=Instalar el sistema en el disco
-Exec=doas /usr/local/bin/yah-installer
+Exec=/usr/local/bin/dexos-installer
+TryExec=/usr/local/bin/dexos-installer
+StartupNotify=true
 Icon=drive-harddisk
 Terminal=false
 Categories=System;
@@ -329,12 +370,12 @@ rc_add sysctl boot
 rc_add hostname boot
 rc_add bootmisc boot
 rc_add syslog boot
-rc_add yah-splash-keys boot
+rc_add dexos-splash-keys boot
 rc_add dbus default
 rc_add elogind default
 rc_add networkmanager default
 rc_add bluetooth default
-rc_add yah-live-user default
+rc_add dexos-live-user default
 rc_add lightdm default
 rc_add mount-ro shutdown
 rc_add killprocs shutdown
