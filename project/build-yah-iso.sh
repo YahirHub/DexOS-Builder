@@ -10,7 +10,7 @@ KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
 ISO="$OUT/yah-alpine-xfce-edge-x86_64.iso"
-VOLID="YAH_ALPINE_XFCE"
+VOLID="alpine-yahxfce edge x86_64"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
