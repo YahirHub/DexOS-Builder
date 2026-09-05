@@ -25,4 +25,12 @@ grep -q '^logind-check-graphical=false$' rootfs/etc/lightdm/lightdm.conf.d/10-ya
 grep -q 'before lightdm' rootfs/etc/init.d/yah-live-user
 grep -qx 'xf86-input-libinput' rootfs/etc/apk/world
 grep -qx 'eudev' rootfs/etc/apk/world
+
+test -L rootfs/etc/runlevels/boot/yah-splash-keys
+grep -q 'need localmount dbus elogind networkmanager yah-live-user' rootfs/etc/init.d/lightdm
+grep -q 'udevadm settle --timeout=15' rootfs/etc/init.d/lightdm
+grep -q 'pidof xfce4-session' rootfs/etc/init.d/lightdm
+grep -q 'splash_progress 100' rootfs/etc/init.d/lightdm
+grep -q 'ESC para volver' rootfs/usr/local/sbin/yah-splash-keys
+grep -q 'initfs_cmdline="\$initfs_cmdline splash"' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
 echo 'test-config: OK'

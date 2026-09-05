@@ -38,3 +38,11 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - El `modloop-lts` sí contiene `evdev.ko`, `usbhid.ko` y demás módulos, pero el APKoVL personalizado no habilitaba el servicio OpenRC `modloop`, por lo que `/lib/modules` nunca se enlazaba al modloop.
 - Prueba en caliente: `rc-service modloop start` + `modprobe evdev` creó event0/event1/event2 y Xorg los agregó con `libinput`. La prueba `Ctrl+Alt+F2`/`Ctrl+Alt+F7` cambió correctamente entre VT y escritorio.
 - Solución permanente: `modloop` en runlevel `sysinit` y `evdev` en `/etc/modules`, cargado por el servicio `modules` antes del runlevel default/LightDM.
+
+## Splash y estabilización del escritorio 2026-09-05
+- Se investigó Alpine edge actual: existen `plymouth` y `plymouth-openrc-plugin`, pero el gran retraso del Live ocurre dentro de initramfs antes de OpenRC.
+- Alpine `mkinitfs` ya integra BusyBox `fbsplash` y cambia a tty16, redirigiendo mensajes a tty1. Se usa esta ruta nativa porque cubre la instalación diskless desde el inicio y evita agregar otra dependencia al Live.
+- `apk-tools 3` soporta `--progress-fd`; se comprobó que emite líneas `actual/total install`. El initramfs se parchea para convertir ese progreso real a 5–88% y enviarlo al FIFO `/.splash.ctrl`.
+- ESC alterna entre tty16 (splash) y tty1 (detalles reales). Antes de `switch_root` hay un watcher en initramfs; OpenRC toma el relevo con `yah-splash-keys`.
+- LightDM se sobrescribe en el APKoVL con una compuerta de readiness: necesita localmount, D-Bus, elogind, NetworkManager y `yah-live-user`; espera `udevadm settle`, inicia Xorg y sólo retira el splash cuando detecta `xfce4-session`.
+- Si XFCE no queda listo dentro del límite, se retira el splash y se cambia a tty1 para mostrar el error en vez de dejar una pantalla negra.

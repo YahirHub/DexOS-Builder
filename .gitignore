@@ -10,3 +10,6 @@
 *.log
 *.pid
 *.rc
+
+__pycache__/
+*.pyc

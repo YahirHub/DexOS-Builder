@@ -177,6 +177,118 @@ start(){
     chown -R yah:yah /home/yah
 }
 EOF_USER
+
+# Mantiene el splash visible durante OpenRC y permite ESC para alternar detalles.
+makefile root:root 0755 "$tmp/usr/local/sbin/yah-splash-keys" <<'EOF_SPLASH_KEYS'
+#!/bin/sh
+esc="$(printf '\033')"
+current=16
+case "$(cat /sys/class/tty/tty0/active 2>/dev/null || true)" in
+    *tty1*) current=1 ;;
+esac
+while [ -p /.splash.ctrl ]; do
+    dev="/dev/tty$current"
+    [ -c "$dev" ] || { sleep 1; continue; }
+    stty -F "$dev" -echo -icanon min 1 time 0 2>/dev/null || exit 0
+    key=
+    IFS= read -r -n 1 key < "$dev" || continue
+    [ "$key" = "$esc" ] || continue
+    if [ "$current" -eq 16 ]; then
+        touch /.yah-show-boot-log
+        printf '\033[H\033[2JYah Alpine — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
+        dmesg > /dev/tty1 2>/dev/null || true
+        rc-status -a > /dev/tty1 2>/dev/null || true
+        chvt 1
+        current=1
+    else
+        rm -f /.yah-show-boot-log
+        chvt 16
+        current=16
+    fi
+done
+EOF_SPLASH_KEYS
+
+makefile root:root 0755 "$tmp/etc/init.d/yah-splash-keys" <<'EOF_SPLASH_SERVICE'
+#!/sbin/openrc-run
+name="Yah boot detail toggle"
+description="Allow ESC to toggle between splash and boot details"
+depend(){ need localmount; before lightdm; }
+start(){
+    [ -p /.splash.ctrl ] || return 0
+    printf '91\n' > /.splash.ctrl 2>/dev/null || true
+    /usr/local/sbin/yah-splash-keys &
+    echo $! > /run/yah-splash-keys.pid
+}
+stop(){
+    if [ -r /run/yah-splash-keys.pid ]; then
+        kill "$(cat /run/yah-splash-keys.pid)" 2>/dev/null || true
+        rm -f /run/yah-splash-keys.pid
+    fi
+    stty -F /dev/tty1 sane 2>/dev/null || true
+    stty -F /dev/tty16 sane 2>/dev/null || true
+}
+EOF_SPLASH_SERVICE
+
+# LightDM espera a que los componentes críticos estén estables antes de mostrar XFCE.
+makefile root:root 0755 "$tmp/etc/init.d/lightdm" <<'EOF_LIGHTDM_INIT'
+#!/sbin/openrc-run
+supervisor=supervise-daemon
+name="Display Manager"
+description="Lightweight Display Manager with Yah Live readiness gate"
+command=/usr/bin/lightdm
+
+depend() {
+    provide display-manager
+    need localmount dbus elogind networkmanager yah-live-user
+    after udev-postmount yah-splash-keys
+}
+
+splash_progress() {
+    [ -p /.splash.ctrl ] || return 0
+    timeout 2 sh -c "printf '%s\n' '$1' > /.splash.ctrl" 2>/dev/null || true
+}
+
+splash_finish() {
+    if [ -r /run/yah-splash-keys.pid ]; then
+        kill "$(cat /run/yah-splash-keys.pid)" 2>/dev/null || true
+        rm -f /run/yah-splash-keys.pid
+    fi
+    stty -F /dev/tty1 sane 2>/dev/null || true
+    stty -F /dev/tty16 sane 2>/dev/null || true
+    if [ -p /.splash.ctrl ]; then
+        timeout 2 sh -c "printf 'exit\n' > /.splash.ctrl" 2>/dev/null || true
+        rm -f /.splash.ctrl
+    fi
+    rm -f /.yah-show-boot-log
+}
+
+start_pre() {
+    splash_progress 94
+    udevadm settle --timeout=15 >/dev/null 2>&1 || true
+    sleep 1
+    checkpath --owner lightdm:lightdm --directory /run/lightdm
+}
+
+start_post() {
+    splash_progress 97
+    i=0
+    while [ "$i" -lt 80 ]; do
+        if pidof xfce4-session >/dev/null 2>&1; then
+            splash_progress 100
+            sleep 1
+            splash_finish
+            return 0
+        fi
+        sleep 0.25
+        i=$((i + 1))
+    done
+    eerror "XFCE no quedó listo; mostrando detalles de arranque"
+    splash_finish
+    chvt 1 2>/dev/null || true
+    return 1
+}
+EOF_LIGHTDM_INIT
+
 makefile root:root 0600 "$tmp/etc/doas.d/20-yah-live.conf" <<'EOF_DOAS'
 permit nopass yah as root cmd /usr/local/sbin/yah-install-root
 EOF_DOAS
@@ -217,6 +329,7 @@ rc_add sysctl boot
 rc_add hostname boot
 rc_add bootmisc boot
 rc_add syslog boot
+rc_add yah-splash-keys boot
 rc_add dbus default
 rc_add elogind default
 rc_add networkmanager default

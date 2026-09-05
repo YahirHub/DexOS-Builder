@@ -1,5 +1,6 @@
 profile_yahxfce() {
     profile_standard
+    initfs_cmdline="$initfs_cmdline splash"
     profile_abbrev="yahxfce"
     title="Yah Alpine XFCE Live"
     desc="Alpine Linux edge con XFCE ligero para PC y laptop."
