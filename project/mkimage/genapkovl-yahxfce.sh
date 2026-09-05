@@ -1,6 +1,7 @@
 #!/bin/sh -e
 HOSTNAME="${1:-yah-live}"
 tmp="$(mktemp -d)"
+chmod 0755 "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 makefile(){ owner="$1"; perms="$2"; path="$3"; mkdir -p "$(dirname "$path")"; cat >"$path"; chown "$owner" "$path"; chmod "$perms" "$path"; }
 rc_add(){ mkdir -p "$tmp/etc/runlevels/$2"; ln -sf "/etc/init.d/$1" "$tmp/etc/runlevels/$2/$1"; }
@@ -119,6 +120,9 @@ EOF_NMC
 # Session Live: user normal + elogind + LightDM. Nunca se inicia XFCE como root.
 mkdir -p "$tmp/etc/lightdm/lightdm.conf.d"
 makefile root:root 0644 "$tmp/etc/lightdm/lightdm.conf.d/10-yah-live.conf" <<'EOF_LDM'
+[LightDM]
+logind-check-graphical=false
+
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
 user-session=xfce
