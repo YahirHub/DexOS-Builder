@@ -61,6 +61,9 @@ proot -i 1000:1000 -R "$ALPINE_ROOT" -b "$ROOT:/work" -w /work/project/mkimage \
 IMG="$(find "$CACHE" -maxdepth 1 -type d -name 'image-*-x86_64-yahxfce' -print | sort | tail -1)"
 [[ -n "$IMG" && -f "$IMG/boot/grub/efi.img" && -f "$IMG/boot/syslinux/isolinux.bin" ]]
 cp "$ROOT/project/boot/fbsplash.ppm" "$IMG/fbsplash.ppm"
+# User-visible boot menu branding.
+sed -i 's/menuentry "Linux lts"/menuentry "DexOS Live"/g' "$IMG/boot/grub/grub.cfg"
+sed -i 's/MENU LABEL Linux lts/MENU LABEL DexOS Live/g' "$IMG/boot/syslinux/syslinux.cfg"
 grep -q ' splash' "$IMG/boot/grub/grub.cfg"
 grep -q ' splash' "$IMG/boot/syslinux/syslinux.cfg"
 xorrisofs -output "$ISO" -full-iso9660-filenames -joliet -rational-rock -sysid LINUX -volid "$VOLID" \

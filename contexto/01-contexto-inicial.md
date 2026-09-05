@@ -54,3 +54,11 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - Feedback runtime: el instalador no abría. Causa: el `.desktop` usaba `Exec=doas /usr/local/bin/dexos-installer`, pero doas sólo autorizaba el comando root final. Solución: el acceso directo ejecuta el wrapper como usuario; el wrapper abre `xfce4-terminal --command="doas /usr/local/sbin/dexos-install-root"`; sólo `setup-alpine` se eleva.
 - Rebranding solicitado: sistema visible `DexOS`, hostname `dexos-live`, usuario Live `dexos`, ISO `DexOS-edge-x86_64.iso`, volumen `alpine-dexos edge x86_64`, splash/fondo/acento en rojo mate.
 - Para evitar parches acumulativos del initramfs, cada build restaura `initramfs-init` desde el APK cacheado de `mkinitfs` y después aplica el parche DexOS.
+
+## LightDM no debe fallar por timeout de XFCE 2026-09-05
+- Evidencia runtime: OpenRC mostró `Starting Display Manager ... [ ok ]` y después `XFCE no quedó listo` seguido de `ERROR: lightdm failed to start`.
+- Causa: `start_post()` esperaba síncronamente 80 iteraciones de 250 ms (20 s) y devolvía 1 si XFCE aún no tenía sesión, wm, desktop y panel. En TCG ese límite era demasiado corto y el propio hook hacía fallar el servicio.
+- Solución: LightDM ahora retorna éxito inmediatamente después de arrancar y lanza `dexos-desktop-ready` desacoplado con `nohup`. El monitor espera hasta 180 s, cierra el splash sólo cuando `xfce4-session`, `xfwm4`, `xfdesktop` y `xfce4-panel` están vivos, y no modifica el estado OpenRC de LightDM por lentitud.
+- Si el proceso LightDM realmente muere, el monitor retira el splash y muestra un diagnóstico en tty1.
+- El instalador se simplificó a Desktop Entry estándar: `Terminal=true` + `Exec=doas /usr/local/sbin/dexos-install-root`, eliminando dependencia del wrapper/opciones de `xfce4-terminal`.
+- Identidad de consola: se agregan `/etc/os-release`, `/etc/issue` y `/etc/motd` con nombre DexOS; el menú GRUB/Syslinux se renombra a `DexOS Live`.

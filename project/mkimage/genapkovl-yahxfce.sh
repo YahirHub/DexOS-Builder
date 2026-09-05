@@ -10,6 +10,22 @@ mkdir -p "$tmp/etc/apk" "$tmp/etc/network" "$tmp/etc/NetworkManager/conf.d"
 makefile root:root 0644 "$tmp/etc/hostname" <<EOF_HOST
 $HOSTNAME
 EOF_HOST
+makefile root:root 0644 "$tmp/etc/os-release" <<'EOF_OS_RELEASE'
+NAME="DexOS"
+PRETTY_NAME="DexOS Live"
+ID=dexos
+ID_LIKE=alpine
+VERSION_ID=edge
+VERSION="Live"
+HOME_URL="https://alpinelinux.org/"
+EOF_OS_RELEASE
+makefile root:root 0644 "$tmp/etc/issue" <<'EOF_ISSUE'
+DexOS Live
+Kernel \r on \m (\l)
+EOF_ISSUE
+makefile root:root 0644 "$tmp/etc/motd" <<'EOF_MOTD'
+Welcome to DexOS Live
+EOF_MOTD
 makefile root:root 0644 "$tmp/etc/hosts" <<EOF_HOSTS
 127.0.0.1 localhost localhost.localdomain $HOSTNAME
 ::1 localhost localhost.localdomain $HOSTNAME
@@ -264,7 +280,60 @@ stop(){
 }
 EOF_SPLASH_SERVICE
 
-# LightDM espera a que los componentes críticos estén estables antes de mostrar XFCE.
+# Monitor desacoplado: no hace fallar LightDM si XFCE tarda en TCG/equipos lentos.
+makefile root:root 0755 "$tmp/usr/local/sbin/dexos-desktop-ready" <<'EOF_DESKTOP_READY'
+#!/bin/sh
+finish_splash() {
+    if [ -r /run/dexos-splash-keys.pid ]; then
+        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
+        rm -f /run/dexos-splash-keys.pid
+    fi
+    stty -F /dev/tty1 sane 2>/dev/null || true
+    stty -F /dev/tty16 sane 2>/dev/null || true
+    if [ -p /.splash.ctrl ]; then
+        timeout 2 sh -c "printf 'exit\n' > /.splash.ctrl" 2>/dev/null || true
+        rm -f /.splash.ctrl
+    fi
+    rm -f /.dexos-show-boot-log /.dexos-splash-progress
+}
+progress() {
+    printf '%s\n' "$1" > /.dexos-splash-progress
+    [ -p /.splash.ctrl ] || return 0
+    timeout 1 sh -c "printf '%s\n' '$1' > /.splash.ctrl" 2>/dev/null || true
+}
+
+progress 97
+i=0
+# Hasta 180 s: máquinas sin KVM o hardware lento pueden tardar mucho en iniciar XFCE.
+while [ "$i" -lt 720 ]; do
+    if pidof xfce4-session >/dev/null 2>&1 \
+       && pidof xfwm4 >/dev/null 2>&1 \
+       && pidof xfdesktop >/dev/null 2>&1 \
+       && pidof xfce4-panel >/dev/null 2>&1; then
+        progress 100
+        sleep 0.75
+        finish_splash
+        exit 0
+    fi
+    # Si LightDM realmente murió, no ocultar el diagnóstico detrás del splash.
+    if [ "$i" -gt 20 ] && ! pidof lightdm >/dev/null 2>&1; then
+        finish_splash
+        printf '\033[H\033[2JDexOS: LightDM terminó inesperadamente. Revise /var/log/lightdm/.\n' > /dev/tty1
+        chvt 1 2>/dev/null || true
+        exit 1
+    fi
+    sleep 0.25
+    i=$((i + 1))
+done
+
+# El timeout del monitor nunca cambia el estado OpenRC de LightDM.
+finish_splash
+printf '\033[H\033[2JDexOS: XFCE tardó más de 180 segundos en quedar listo.\n' > /dev/tty1
+chvt 1 2>/dev/null || true
+exit 1
+EOF_DESKTOP_READY
+
+# LightDM espera a dependencias críticas, pero la espera de XFCE ocurre aparte.
 makefile root:root 0755 "$tmp/etc/init.d/lightdm" <<'EOF_LIGHTDM_INIT'
 #!/sbin/openrc-run
 supervisor=supervise-daemon
@@ -307,24 +376,10 @@ start_pre() {
 
 start_post() {
     splash_progress 97
-    i=0
-    while [ "$i" -lt 80 ]; do
-        if pidof xfce4-session >/dev/null 2>&1 \
-           && pidof xfwm4 >/dev/null 2>&1 \
-           && pidof xfdesktop >/dev/null 2>&1 \
-           && pidof xfce4-panel >/dev/null 2>&1; then
-            splash_progress 100
-            sleep 0.75
-            splash_finish
-            return 0
-        fi
-        sleep 0.25
-        i=$((i + 1))
-    done
-    eerror "XFCE no quedó listo; mostrando detalles de arranque"
-    splash_finish
-    chvt 1 2>/dev/null || true
-    return 1
+    rm -f /run/dexos-desktop-ready.pid
+    nohup /usr/local/sbin/dexos-desktop-ready >/run/dexos-desktop-ready.log 2>&1 &
+    echo $! > /run/dexos-desktop-ready.pid
+    return 0
 }
 EOF_LIGHTDM_INIT
 
@@ -334,10 +389,6 @@ EOF_DOAS
 
 # Instalador pequeño: wrapper seguro hacia setup-alpine en terminal por ahora.
 # deuda-tecnica: reemplazar por wizard Go completo cuando runtime XFCE esté validado, antes de release estable.
-makefile root:root 0755 "$tmp/usr/local/bin/dexos-installer" <<'EOF_INSTALLER'
-#!/bin/sh
-exec xfce4-terminal --title="Instalar DexOS" --hold --command="doas /usr/local/sbin/dexos-install-root"
-EOF_INSTALLER
 makefile root:root 0755 "$tmp/usr/local/sbin/dexos-install-root" <<'EOF_INSTALLROOT'
 #!/bin/sh
 exec setup-alpine
@@ -347,12 +398,12 @@ makefile root:root 0644 "$tmp/usr/share/applications/dexos-installer.desktop" <<
 [Desktop Entry]
 Type=Application
 Name=Instalar DexOS
-Comment=Instalar el sistema en el disco
-Exec=/usr/local/bin/dexos-installer
-TryExec=/usr/local/bin/dexos-installer
-StartupNotify=true
+Comment=Instalar DexOS en el disco
+Exec=doas /usr/local/sbin/dexos-install-root
+TryExec=doas
 Icon=drive-harddisk
-Terminal=false
+Terminal=true
+StartupNotify=false
 Categories=System;
 EOF_DESKTOP
 

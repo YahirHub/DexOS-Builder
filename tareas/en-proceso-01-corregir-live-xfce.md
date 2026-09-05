@@ -24,3 +24,13 @@ Corregir la sesión Live XFCE congelada.
 - [x] Añadir pruebas de regresión para branding, transición, instalador y splash.
 - [ ] Recompilar ISO DexOS.
 - [ ] Probar ESC ida/vuelta, transición sin negro, interacción XFCE e instalador en QEMU.
+
+## Corrección posterior a prueba runtime
+- [x] Diagnosticar `lightdm failed to start` como fallo provocado por timeout síncrono de 20 s.
+- [x] Desacoplar monitor de readiness de XFCE del estado OpenRC de LightDM.
+- [x] Extender monitor a 180 s sin marcar servicio fallido por lentitud.
+- [x] Simplificar instalador con `Terminal=true` y elevación directa del comando autorizado.
+- [x] Cambiar identidad tty/os-release a DexOS y branding del menú de arranque.
+- [x] Actualizar pruebas de regresión.
+- [ ] Recompilar ISO y recrear VM.
+- [ ] Validar escritorio e instalador en runtime.
