@@ -455,39 +455,77 @@ wall=/usr/share/dexos/dexos-wallpaper.png
 /usr/bin/xsetroot -solid '#6b2a2e' 2>/dev/null || true
 /usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
 
-# Wait until xfconf/xfdesktop are responsive, then update every property XFCE
-# already created and explicitly create one for each connected monitor.
+# This helper can start before XFCE creates its private DBus session. Wait for
+# xfdesktop and import its environment so xfconf-query reaches the real user
+# xfconfd instead of a non-existent/wrong bus.
 i=0
-while [ "$i" -lt 80 ]; do
-    if pidof xfdesktop >/dev/null 2>&1 && xfconf-query -c xfce4-desktop -l >/dev/null 2>&1; then break; fi
+xpid=
+while [ "$i" -lt 120 ]; do
+    xpid=$(pidof xfdesktop 2>/dev/null | awk '{print $1}')
+    [ -n "$xpid" ] && [ -r "/proc/$xpid/environ" ] && break
+    sleep 0.25
+    i=$((i + 1))
+done
+if [ -n "$xpid" ] && [ -r "/proc/$xpid/environ" ]; then
+    while IFS= read -r envline; do
+        case "$envline" in
+            DBUS_SESSION_BUS_ADDRESS=*) export DBUS_SESSION_BUS_ADDRESS=${envline#*=} ;;
+            DISPLAY=*) export DISPLAY=${envline#*=} ;;
+            XAUTHORITY=*) export XAUTHORITY=${envline#*=} ;;
+        esac
+    done <<EOF_ENV
+$(tr '\0' '\n' < "/proc/$xpid/environ")
+EOF_ENV
+fi
+
+i=0
+while [ "$i" -lt 40 ]; do
+    xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
     sleep 0.25
     i=$((i + 1))
 done
 
+set_backdrop() {
+    base=$1
+    xfconf-query -c xfce4-desktop -p "$base/last-image" -s "$wall" 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$wall" 2>/dev/null || true
+    xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5 2>/dev/null || true
+    xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/color-style" -n -t int -s 0 2>/dev/null || true
+}
+
+# Existing XFCE properties (covers migrations and multiple workspaces).
+props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
+printf '%s\n' "$props" | while IFS= read -r prop; do
+    [ -n "$prop" ] || continue
+    set_backdrop "${prop%/last-image}"
+done
+
+# Connected output names (Virtual-1, eDP-1, HDMI-1, ...).
+xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | while read -r mon; do
+    [ -n "$mon" ] || continue
+    set_backdrop "/backdrop/screen0/monitor${mon}/workspace0"
+done
+# Generic fallback used before XFCE has named the physical output.
+set_backdrop "/backdrop/screen0/monitor0/workspace0"
+
+xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
+xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeName -s Breeze 2>/dev/null || \
+  xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s Breeze 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 24 2>/dev/null || \
+  xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 24 2>/dev/null || true
+
+# XFCE's first-run migration may write defaults a moment after xfdesktop starts.
+# Re-apply after that migration and force the desktop process to redraw.
+xfdesktop --reload >/dev/null 2>&1 || true
+sleep 2
 props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
 printf '%s\n' "$props" | while IFS= read -r prop; do
     [ -n "$prop" ] || continue
     xfconf-query -c xfce4-desktop -p "$prop" -s "$wall" 2>/dev/null || true
-    base=${prop%/last-image}
-    xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || true
-    xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || true
 done
-
-xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | while read -r mon; do
-    [ -n "$mon" ] || continue
-    base="/backdrop/screen0/monitor${mon}/workspace0"
-    xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$wall" 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/last-image" -s "$wall" 2>/dev/null || true
-    xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || true
-    xfconf-query -c xfce4-desktop -p "$base/color-style" -n -t int -s 0 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || true
-done
-
-xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
-xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
-xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s Breeze 2>/dev/null || true
-xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 24 2>/dev/null || true
 xfdesktop --reload >/dev/null 2>&1 || true
 exit 0
 EOF_APPLY_THEME

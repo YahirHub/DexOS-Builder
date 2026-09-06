@@ -108,6 +108,19 @@ if old_cfg not in s:
     raise SystemExit("fbsplash config anchor not found")
 s = s.replace(old_cfg, new_cfg, 1)
 
+old_select = '''\tfor fbsplash in /media/*/fbsplash.ppm; do
+\t\t[ -e "$fbsplash" ] && break
+\tdone
+'''
+new_select = old_select + '''\t# Installed DexOS has no /media splash. Use the image embedded in initramfs.
+\tif [ ! -e "$fbsplash" ] && [ -e /usr/share/dexos/boot.ppm ]; then
+\t\tfbsplash=/usr/share/dexos/boot.ppm
+\tfi
+'''
+if old_select not in s:
+    raise SystemExit("fbsplash selection anchor not found")
+s = s.replace(old_select, new_select, 1)
+
 old_start = '''\tsetsid fbsplash -T 16 -s "$fbsplash" -i "$config" -f "$sysroot/$splashfile" &
 \teend 0
 '''

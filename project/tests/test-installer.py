@@ -142,4 +142,10 @@ assert "Reiniciar ahora" in ui
 assert "doas', 'reboot'" in ui
 assert "/usr/share/dexos/wallpaper'" not in backend_text
 
+
+# v007 installed splash must be self-contained, not depend on Live /media.
+assert "ata base ide scsi usb virtio ext4 nvme kms dexosroot" in backend_text
+for path in ['/usr/share/dexos/boot.ppm','/sbin/fbsplash','/usr/bin/setsid','/usr/bin/chvt','/bin/stty']:
+    assert path in backend_text
+
 print('test-installer: OK')

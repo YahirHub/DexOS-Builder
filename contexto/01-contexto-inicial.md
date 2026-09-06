@@ -154,3 +154,13 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - ISO v006: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v006.iso`.
 - SHA-256: `748cb713d130b3ae158476e68e15839d73cb99d1ea447e6f76863ce4b9d214c2`.
 - VM de prueba reiniciada con QCOW totalmente nuevo de 24 GiB: `/workspace/yah-alpine/runtime/dexos-v006-clean.qcow2`.
+
+## DexOS v007: wallpaper XFCE aplicado en sesión real y splash instalado autocontenido
+- Se inspeccionó la instalación v006 real desde el QCOW y se confirmó que el XML de XFCE sí apuntaba a DexOS, pero `dexos-apply-theme` podía ejecutarse sin el DBus correcto de la sesión.
+- v007 espera a `xfdesktop` e importa `DBUS_SESSION_BUS_ADDRESS`, `DISPLAY` y `XAUTHORITY` desde `/proc/<pid>/environ` antes de usar `xfconf-query`.
+- Reaplica el wallpaper a propiedades existentes, monitor real y `monitor0`, recarga `xfdesktop` y repite después de la migración inicial de XFCE.
+- Se inspeccionó el initramfs instalado v006 y se detectó que contenía `/usr/share/dexos/boot.ppm` pero no lo seleccionaba como fallback, y faltaban los enlaces BusyBox usados por el splash.
+- v007 añade fallback explícito `fbsplash=/usr/share/dexos/boot.ppm`, feature `kms` y los archivos `/sbin/fbsplash`, `/usr/bin/setsid`, `/usr/bin/chvt`, `/bin/stty` al initramfs instalado.
+- ISO v007: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v007.iso`.
+- SHA-256: `41f2d211888586fb574e758cc52af08da5cf63c8b11a048addf3faf40ef9bbca`.
+- VM v007 arrancada con QCOW nuevo `/workspace/yah-alpine/runtime/dexos-v007-clean.qcow2` y túnel noVNC validado.

@@ -222,4 +222,10 @@ test -x rootfs/usr/share/dexos/installed/patch-initramfs-init.py
 grep -q '^cursor-theme-name=Breeze$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 ! grep -q '~language' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 
+
+# v007 wallpaper helper must attach to the real XFCE session bus.
+grep -q '/proc/$xpid/environ' rootfs/usr/local/bin/dexos-apply-theme
+grep -q 'DBUS_SESSION_BUS_ADDRESS' rootfs/usr/local/bin/dexos-apply-theme
+grep -q 'set_backdrop' rootfs/usr/local/bin/dexos-apply-theme
+
 echo 'test-config: OK'

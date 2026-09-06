@@ -496,7 +496,7 @@ def configure_system(cfg, efi_partition, root_partition):
     write(TARGET / 'etc/fstab', f'''UUID={root_uuid}\t/\text4\tdefaults,noatime\t0 1\nUUID={efi_uuid}\t/boot/efi\tvfat\tumask=0077\t0 2\ntmpfs\t/tmp\ttmpfs\tnosuid,nodev\t0 0\n''')
     write(TARGET / 'etc/apk/repositories', '''https://dl-cdn.alpinelinux.org/alpine/edge/main\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\n@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing\n''')
     write(TARGET / 'etc/mkinitfs/features.d/dexosroot.modules', '''kernel/drivers/virtio/virtio.ko*\nkernel/drivers/virtio/virtio_ring.ko*\nkernel/drivers/virtio/virtio_pci.ko*\nkernel/drivers/block/virtio_blk.ko*\nkernel/fs/ext4/ext4.ko*\n''')
-    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.files', '/usr/share/dexos/boot.ppm\n')
+    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.files', '/usr/share/dexos/boot.ppm\n/sbin/fbsplash\n/usr/bin/setsid\n/usr/bin/chvt\n/bin/stty\n')
     init_script = TARGET / 'usr/share/mkinitfs/initramfs-init'
     if not init_script.is_file():
         raise InstallError('Falta initramfs-init en el sistema destino.')
@@ -504,7 +504,7 @@ def configure_system(cfg, efi_partition, root_partition):
     if not patcher.is_file():
         raise InstallError('Falta el parche DexOS de bootsplash en el sistema destino.')
     run(['/usr/bin/python3', str(patcher), str(init_script)])
-    write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme dexosroot"\n')
+    write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme kms dexosroot"\n')
 
     for service, level in [
         ('devfs','sysinit'), ('dmesg','sysinit'), ('udev','sysinit'), ('udev-trigger','sysinit'), ('udev-settle','sysinit'),

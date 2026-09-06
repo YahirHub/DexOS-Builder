@@ -119,3 +119,13 @@ Corregir la sesión Live XFCE congelada.
 - [x] Generar y verificar `DexOS-edge-x86_64-v006.iso`.
 - [x] Reiniciar VM con QCOW limpio para prueba desde cero.
 - [ ] Validar visualmente el Live, instalar v006 en el QCOW limpio y verificar splash, LightDM y wallpaper del sistema instalado.
+
+## DexOS v007
+- [x] Diagnosticar instalación v006 real desde QCOW.
+- [x] Corregir acceso al DBus real de XFCE al aplicar wallpaper.
+- [x] Reaplicar fondo después de la migración inicial de XFCE.
+- [x] Hacer autocontenido el splash del initramfs instalado.
+- [x] Añadir KMS y applets BusyBox necesarios al initramfs instalado.
+- [x] Generar y verificar `DexOS-edge-x86_64-v007.iso`.
+- [x] Arrancar v007 con QCOW completamente nuevo.
+- [ ] Validar visualmente Live, instalar v007 y confirmar wallpaper + splash del sistema instalado.

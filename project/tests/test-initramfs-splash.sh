@@ -19,4 +19,8 @@ grep -q 'BAR_G=72' "$TMP/initramfs-init"
 grep -q 'BAR_B=76' "$TMP/initramfs-init"
 test -s "$ROOT/project/boot/fbsplash.ppm"
 head -c 2 "$ROOT/project/boot/fbsplash.ppm" | grep -q '^P6$'
+
+grep -q '/usr/share/dexos/boot.ppm' "$TMP/initramfs-init"
+grep -q 'fbsplash=/usr/share/dexos/boot.ppm' "$TMP/initramfs-init"
+
 echo 'test-initramfs-splash: OK'
