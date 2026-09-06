@@ -73,3 +73,12 @@ Corregir la sesión Live XFCE congelada.
 - [x] Verificar hash idéntico del wallpaper dentro de la ISO.
 - [x] Recompilar ISO con correcciones.
 - [ ] Probar en hardware físico que aparece la interfaz Wi-Fi.
+
+## Root Live y segunda fase Wi-Fi 2026-09-06
+- [x] Permitir `su` sin contraseña desde el usuario Live `dexos`.
+- [x] Mantener contraseña root normal en el sistema instalado.
+- [x] Mover detección Wi-Fi a runlevel boot antes de NetworkManager.
+- [x] Añadir dependencia explícita de NetworkManager respecto a `dexos-wifi-init`.
+- [x] Añadir refresco Wi-Fi después de NetworkManager.
+- [x] Añadir log de diagnóstico `/var/log/dexos-wifi.log`.
+- [ ] Validar en hardware físico el chipset Wi-Fi específico del usuario.

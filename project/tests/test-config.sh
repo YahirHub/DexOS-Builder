@@ -78,6 +78,8 @@ test -L rootfs/etc/runlevels/boot/swclock
 test ! -e rootfs/etc/runlevels/boot/hwclock
 test -L rootfs/etc/runlevels/default/chronyd
 grep -q 'adduser -D -h /home/dexos -s /bin/bash dexos' rootfs/etc/init.d/dexos-live-user
+grep -q 'passwd -d root' rootfs/etc/init.d/dexos-live-user
+grep -q 'pam_wheel.so trust use_uid group=wheel' rootfs/etc/pam.d/su
 grep -q '^user-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^autologin-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^background=/usr/share/dexos/wallpaper$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
@@ -96,13 +98,17 @@ test -x rootfs/usr/share/dexos/installed/dexos-splash-keys
 
 # Wi-Fi reprobe service: unblocks radio, resolves modaliases and notifies NetworkManager.
 test -x rootfs/etc/init.d/dexos-wifi-init
-test -L rootfs/etc/runlevels/default/dexos-wifi-init
+test -L rootfs/etc/runlevels/boot/dexos-wifi-init
 grep -q 'rfkill unblock wlan' rootfs/etc/init.d/dexos-wifi-init
+grep -q '^rc_need="dexos-wifi-init"$' rootfs/etc/conf.d/networkmanager
 grep -q '/sys/bus/pci/devices/\*/modalias' rootfs/etc/init.d/dexos-wifi-init
 grep -q '/sys/bus/usb/devices/\*/modalias' rootfs/etc/init.d/dexos-wifi-init
 grep -q 'udevadm trigger --action=add --subsystem-match=net' rootfs/etc/init.d/dexos-wifi-init
-grep -q 'nmcli radio wifi on' rootfs/etc/init.d/dexos-wifi-init
-grep -q 'device wifi rescan' rootfs/etc/init.d/dexos-wifi-init
+test -x rootfs/etc/init.d/dexos-wifi-refresh
+test -L rootfs/etc/runlevels/default/dexos-wifi-refresh
+grep -q 'need networkmanager' rootfs/etc/init.d/dexos-wifi-refresh
+grep -q 'nmcli radio wifi on' rootfs/etc/init.d/dexos-wifi-refresh
+grep -q 'device wifi rescan' rootfs/etc/init.d/dexos-wifi-refresh
 test -x rootfs/usr/share/dexos/installed/dexos-wifi-init
 
 echo 'test-config: OK'

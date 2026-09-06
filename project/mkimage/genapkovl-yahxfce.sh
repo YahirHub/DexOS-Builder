@@ -24,7 +24,7 @@ if [ -z "$WALLPAPER_ASSET" ]; then
     done
 fi
 [ -n "$WALLPAPER_ASSET" ] || { echo "Falta recurso visual de wallpaper exacto" >&2; exit 1; }
-for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init; do
+for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh; do
     [ -f "$SYSTEM_ASSETS/$f" ] || { echo "Falta recurso del sistema: $f" >&2; exit 1; }
 done
 tmp="$(mktemp -d)"
@@ -174,6 +174,12 @@ makefile root:root 0644 "$tmp/etc/NetworkManager/conf.d/10-dexos-live.conf" <<'E
 wifi.powersave=2
 EOF_NMC
 
+makefile root:root 0644 "$tmp/etc/conf.d/networkmanager" <<'EOF_NM_OPENRC'
+# Do not let NetworkManager start until DexOS has completed its hardware probe.
+rc_need="dexos-wifi-init"
+EOF_NM_OPENRC
+
+
 # Session Live: user normal + elogind + LightDM. Nunca se inicia XFCE como root.
 mkdir -p "$tmp/etc/lightdm/lightdm.conf.d"
 makefile root:root 0644 "$tmp/etc/lightdm/lightdm.conf.d/10-dexos-live.conf" <<'EOF_LDM'
@@ -211,6 +217,8 @@ install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash" "$tmp/usr/share/dexos/installe
 install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash-finish" "$tmp/usr/share/dexos/installed/dexos-bootsplash-finish"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/usr/share/dexos/installed/dexos-wifi-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/etc/init.d/dexos-wifi-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-refresh" "$tmp/usr/share/dexos/installed/dexos-wifi-refresh"
+install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-refresh" "$tmp/etc/init.d/dexos-wifi-refresh"
 makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
 [Desktop Entry]
 Name=DexOS
@@ -292,6 +300,15 @@ makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-pow
 <channel name="xfce4-power-manager" version="1.0"><property name="xfce4-power-manager" type="empty"><property name="show-tray-icon" type="int" value="1"/><property name="brightness-switch" type="int" value="1"/><property name="handle-brightness-keys" type="bool" value="true"/><property name="general-notification" type="bool" value="true"/></property></channel>
 EOF_PWR
 
+makefile root:root 0644 "$tmp/etc/pam.d/su" <<'EOF_SU_PAM'
+# DexOS Live: members of wheel (the dexos Live account) may become root
+# without a password. Other callers still require the target password.
+auth       sufficient   pam_wheel.so trust use_uid group=wheel
+auth       required     pam_unix.so
+account    required     pam_unix.so
+session    required     pam_unix.so
+EOF_SU_PAM
+
 # Crea el usuario live antes de LightDM.
 makefile root:root 0755 "$tmp/etc/init.d/dexos-live-user" <<'EOF_USER'
 #!/sbin/openrc-run
@@ -304,6 +321,10 @@ start(){
         for g in wheel audio video input netdev plugdev; do getent group "$g" >/dev/null 2>&1 && addgroup dexos "$g" || true; done
     fi
     passwd -d dexos >/dev/null 2>&1 || true
+    # Live-only convenience: root has no password and wheel members may use
+    # `su` without authentication. Installed systems keep the root password
+    # explicitly chosen in the graphical installer.
+    passwd -d root >/dev/null 2>&1 || true
     mkdir -p /home/dexos/Desktop /home/dexos/.config/autostart
     if [ -f /usr/share/applications/dexos-installer.desktop ]; then
         install -m 0755 /usr/share/applications/dexos-installer.desktop /home/dexos/Desktop/Instalar-DexOS.desktop
@@ -513,8 +534,9 @@ rc_add syslog boot
 rc_add dexos-splash-keys boot
 rc_add dbus default
 rc_add elogind default
-rc_add dexos-wifi-init default
+rc_add dexos-wifi-init boot
 rc_add networkmanager default
+rc_add dexos-wifi-refresh default
 rc_add chronyd default
 rc_add bluetooth default
 rc_add dexos-live-user default

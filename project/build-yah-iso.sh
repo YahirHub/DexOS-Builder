@@ -48,7 +48,8 @@ cp "$ROOT/project/installed/dexos-splash-keys" "$APORTS/scripts/dexos-splash-key
 cp "$ROOT/project/installed/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash"
 cp "$ROOT/project/installed/dexos-bootsplash-finish" "$APORTS/scripts/dexos-bootsplash-finish"
 cp "$ROOT/project/installed/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-init"
-chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init"
+cp "$ROOT/project/installed/dexos-wifi-refresh" "$APORTS/scripts/dexos-wifi-refresh"
+chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-refresh"
 
 python3 - "$APORTS/scripts/mkimage.sh" "$APORTS/scripts/mkimg.base.sh" <<'PY'
 from pathlib import Path

@@ -103,3 +103,13 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - El build ahora falla si falta el wallpaper del usuario; no vuelve a sustituirlo silenciosamente por el generado.
 - Se verificó byte a byte que `/usr/share/dexos/wallpaper` dentro de la ISO coincide con el archivo fuente.
 - ISO resultante SHA-256: `c529655417d62bbbf85114c9ce4d0f5959aa71d29676e25e3eb350f271a6a291`.
+
+## SU Live sin contraseña y Wi-Fi reforzado 2026-09-06
+- El usuario Live `dexos` puede ejecutar `su` para convertirse en root sin contraseña mediante `pam_wheel.so trust` y root sin password sólo en el entorno Live.
+- El sistema instalado NO hereda este bypass; conserva la contraseña root definida en el instalador.
+- La detección Wi-Fi se dividió en dos fases:
+  - `dexos-wifi-init` corre en `boot`, antes de NetworkManager, desbloquea rfkill, reenumera PCI/USB, carga drivers por modalias y hace dos pasadas.
+  - `dexos-wifi-refresh` corre después de NetworkManager, fuerza radio Wi-Fi ON, rescan y registra el estado visto por NetworkManager.
+- NetworkManager declara dependencia explícita `rc_need="dexos-wifi-init"`.
+- Se genera `/var/log/dexos-wifi.log` con rfkill, iw, interfaces, PCI, USB y mensajes de kernel/firmware para diagnóstico en hardware real.
+- ISO resultante SHA-256: `965ffdf11335de11517e23bd7e43de0a1be60e17e5e17ce8d1c986967c006656`.

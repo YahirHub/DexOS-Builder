@@ -56,10 +56,17 @@ assert 'quiet splash' in m.rewrite_grub_root('  linux /boot/vmlinuz-lts root=/de
 
 # Installed systems must keep the Wi-Fi reprobe service available and enabled by backend wiring.
 backend_text=(ROOT/'project/installer/dexos-installer-backend.py').read_text()
-assert "dexos-wifi-init','default'" in backend_text
+assert "dexos-wifi-init','boot'" in backend_text
 assert "TARGET / 'etc/init.d/dexos-wifi-init'" in backend_text
+assert "TARGET / 'etc/init.d/dexos-wifi-refresh'" in backend_text
+
+assert 'rc_need=\"dexos-wifi-init\"' in backend_text
+assert 'passwd -d root' not in backend_text
 wifi=(ROOT/'project/installed/dexos-wifi-init').read_text()
-for token in ['rfkill unblock wlan','/sys/bus/pci/devices/*/modalias','/sys/bus/usb/devices/*/modalias','nmcli radio wifi on','device wifi rescan']:
+for token in ['rfkill unblock wlan','/sys/bus/pci/devices/*/modalias','/sys/bus/usb/devices/*/modalias','wireless interface detected']:
     assert token in wifi
+refresh=(ROOT/'project/installed/dexos-wifi-refresh').read_text()
+for token in ['need networkmanager','nmcli radio wifi on','device wifi rescan','GENERAL.DEVICE,GENERAL.TYPE']:
+    assert token in refresh
 
 print('test-installer: OK')

@@ -1,0 +1,31 @@
+#!/sbin/openrc-run
+name="DexOS Wi-Fi refresh"
+description="Enable Wi-Fi and refresh NetworkManager after hardware detection"
+LOG=/var/log/dexos-wifi.log
+
+depend() {
+    need networkmanager
+    after networkmanager dexos-wifi-init
+    before lightdm
+}
+
+start() {
+    ebegin "Refreshing Wi-Fi in NetworkManager"
+    {
+        echo "--- NetworkManager refresh $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true) ---"
+        rfkill unblock wlan 2>&1 || true
+        rfkill unblock wifi 2>&1 || true
+        rfkill unblock all 2>&1 || true
+        nmcli networking on 2>&1 || true
+        nmcli radio wifi on 2>&1 || true
+        sleep 1
+        nmcli device wifi rescan 2>&1 || true
+        echo '--- nmcli radio ---'
+        nmcli radio all 2>&1 || true
+        echo '--- nmcli device ---'
+        nmcli -f GENERAL.DEVICE,GENERAL.TYPE,GENERAL.STATE,GENERAL.REASON device show 2>&1 || true
+        echo '--- nmcli wifi ---'
+        nmcli -f IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,SECURITY device wifi list 2>&1 || true
+    } >> "$LOG"
+    eend 0
+}

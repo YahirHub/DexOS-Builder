@@ -193,6 +193,7 @@ def configure_branding():
     copy_if('/usr/share/dexos/installed/dexos-bootsplash', TARGET / 'etc/init.d/dexos-bootsplash', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-bootsplash-finish', TARGET / 'etc/init.d/dexos-bootsplash-finish', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-wifi-init', TARGET / 'etc/init.d/dexos-wifi-init', 0o755)
+    copy_if('/usr/share/dexos/installed/dexos-wifi-refresh', TARGET / 'etc/init.d/dexos-wifi-refresh', 0o755)
     copy_if('/usr/local/sbin/dexos-xsetup', TARGET / 'usr/local/sbin/dexos-xsetup', 0o755)
     copy_if('/usr/local/bin/dexos-apply-theme', TARGET / 'usr/local/bin/dexos-apply-theme', 0o755)
     copy_if('/etc/xdg/autostart/dexos-branding.desktop', TARGET / 'etc/xdg/autostart/dexos-branding.desktop')
@@ -204,6 +205,7 @@ def configure_branding():
     write(TARGET / 'etc/lightdm/lightdm-gtk-greeter.conf', '''[greeter]\nbackground=/usr/share/dexos/wallpaper\ntheme-name=adw-gtk3-dark\nicon-theme-name=Adwaita-Xfce\nfont-name=DejaVu Sans 11\nclock-format=%A %d de %B  %H:%M\nindicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power\nuser-background=false\n''')
     write(TARGET / 'etc/doas.d/20-dexos.conf', 'permit :wheel\n', 0o600)
     write(TARGET / 'etc/sudoers.d/10-wheel', '%wheel ALL=(ALL:ALL) ALL\n', 0o440)
+    write(TARGET / 'etc/conf.d/networkmanager', 'rc_need="dexos-wifi-init"\n')
     write(TARGET / 'usr/share/xsessions/dexos.desktop', '[Desktop Entry]\nName=DexOS\nComment=DexOS XFCE Session\nExec=/usr/local/bin/dexos-session\nTryExec=/usr/local/bin/dexos-session\nType=Application\nDesktopNames=XFCE\n')
 
 def patch_installed_initramfs(text):
@@ -259,7 +261,7 @@ def configure_system(cfg, p2, p3):
     for service, level in [
         ('devfs','sysinit'), ('dmesg','sysinit'), ('udev','sysinit'), ('udev-trigger','sysinit'), ('udev-settle','sysinit'),
         ('udev-postmount','default'), ('swclock','boot'), ('modules','boot'), ('sysctl','boot'), ('hostname','boot'),
-        ('bootmisc','boot'), ('syslog','boot'), ('dexos-bootsplash','boot'), ('dbus','default'), ('elogind','default'), ('dexos-wifi-init','default'), ('networkmanager','default'), ('chronyd','default'),
+        ('bootmisc','boot'), ('syslog','boot'), ('dexos-bootsplash','boot'), ('dexos-wifi-init','boot'), ('dbus','default'), ('elogind','default'), ('networkmanager','default'), ('dexos-wifi-refresh','default'), ('chronyd','default'),
         ('bluetooth','default'), ('lightdm','default'), ('dexos-bootsplash-finish','default'), ('mount-ro','shutdown'), ('killprocs','shutdown'), ('savecache','shutdown')]:
         chroot(['/sbin/rc-update', 'add', service, level], check=False)
     chroot(['/sbin/rc-update', 'del', 'mdev', 'sysinit'], check=False)
