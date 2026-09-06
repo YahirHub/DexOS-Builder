@@ -27,7 +27,28 @@ cp "$ROOT/project/mkimage/genapkovl-yahxfce.sh" "$APORTS/scripts/genapkovl-yahxf
 cp "$ROOT/project/installer/dexos-installer.py" "$APORTS/scripts/dexos-installer.py"
 cp "$ROOT/project/installer/dexos-installer-backend.py" "$APORTS/scripts/dexos-installer-backend.py"
 cp "$ROOT/project/installer/installer-packages.txt" "$APORTS/scripts/installer-packages.txt"
-chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"
+python3 "$ROOT/project/assets/generate-brand-assets.py"
+cp "$ROOT/project/assets/dexos-boot.jpg" "$APORTS/scripts/dexos-boot.jpg"
+cp "$ROOT/project/assets/dexos-boot.ppm" "$APORTS/scripts/dexos-boot.ppm"
+# Preserve the user's wallpaper bytes exactly. The filename is intentionally
+# extensionless because GTK/GdkPixbuf detects PNG/JPEG by file signature.
+USER_WALLPAPER=""
+for candidate in "$ROOT/project/assets/dexos-wallpaper-user" "$ROOT/project/assets/dexos-wallpaper-user.png" "$ROOT/project/assets/dexos-wallpaper-user.jpg" "$ROOT/project/assets/dexos-wallpaper-user.jpeg"; do
+    if [[ -s "$candidate" ]]; then USER_WALLPAPER="$candidate"; break; fi
+done
+if [[ -z "$USER_WALLPAPER" ]]; then
+    echo "Falta el wallpaper exacto del usuario: project/assets/dexos-wallpaper-user.(png|jpg|jpeg)" >&2
+    echo "DexOS no se compila con un wallpaper sustituto." >&2
+    exit 1
+fi
+cp "$USER_WALLPAPER" "$APORTS/scripts/dexos-wallpaper"
+cp "$ROOT/project/installed/dexos-session-splash.py" "$APORTS/scripts/dexos-session-splash.py"
+cp "$ROOT/project/installed/dexos-session" "$APORTS/scripts/dexos-session"
+cp "$ROOT/project/installed/dexos-splash-keys" "$APORTS/scripts/dexos-splash-keys"
+cp "$ROOT/project/installed/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash"
+cp "$ROOT/project/installed/dexos-bootsplash-finish" "$APORTS/scripts/dexos-bootsplash-finish"
+cp "$ROOT/project/installed/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-init"
+chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init"
 
 python3 - "$APORTS/scripts/mkimage.sh" "$APORTS/scripts/mkimg.base.sh" <<'PY'
 from pathlib import Path
@@ -69,7 +90,7 @@ proot -i 1000:1000 -R "$ALPINE_ROOT" -b "$ROOT:/work" -w /work/project/mkimage \
   --repository https://dl-cdn.alpinelinux.org/alpine/edge/main --repository https://dl-cdn.alpinelinux.org/alpine/edge/community
 IMG="$(find "$CACHE" -maxdepth 1 -type d -name 'image-*-x86_64-yahxfce' -print | sort | tail -1)"
 [[ -n "$IMG" && -f "$IMG/boot/grub/efi.img" && -f "$IMG/boot/syslinux/isolinux.bin" ]]
-cp "$ROOT/project/boot/fbsplash.ppm" "$IMG/fbsplash.ppm"
+cp "$ROOT/project/assets/dexos-boot.ppm" "$IMG/fbsplash.ppm"
 # User-visible boot menu branding.
 sed -i 's/menuentry "Linux lts"/menuentry "DexOS Live"/g' "$IMG/boot/grub/grub.cfg"
 sed -i 's/MENU LABEL Linux lts/MENU LABEL DexOS Live/g' "$IMG/boot/syslinux/syslinux.cfg"

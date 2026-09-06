@@ -1,5 +1,5 @@
-alpine-base alpine-conf doas bash shadow
-ca-certificates tzdata curl
+alpine-base alpine-conf doas sudo bash shadow python3 py3-gobject3
+ca-certificates tzdata curl chrony chrony-openrc firefox
 linux-lts linux-firmware wireless-regdb
 sfdisk util-linux dosfstools e2fsprogs parted efibootmgr
 grub grub-bios grub-efi
@@ -14,6 +14,6 @@ lightdm lightdm-openrc lightdm-gtk-greeter
 font-dejavu font-noto adw-gtk3 adwaita-xfce-icon-theme xfce-polkit
 gvfs udisks2 thunar-volman tumbler
 networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli network-manager-applet
-iw wpa_supplicant bluez bluez-openrc
+iw util-linux-misc wireless-tools wpa_supplicant bluez bluez-openrc
 pipewire pipewire-pulse pipewire-alsa wireplumber alsa-utils pavucontrol
 upower brightnessctl pciutils usbutils

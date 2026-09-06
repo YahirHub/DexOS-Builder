@@ -91,7 +91,7 @@ def safe_disks():
     return result
 
 def validate(cfg):
-    required = ['disk', 'hostname', 'username', 'password', 'timezone', 'erase_confirm']
+    required = ['disk', 'hostname', 'username', 'password', 'root_password', 'timezone', 'erase_confirm']
     for k in required:
         if k not in cfg:
             raise InstallError(f'Falta el dato requerido: {k}')
@@ -104,7 +104,9 @@ def validate(cfg):
     if not USER_RE.fullmatch(cfg['username']) or cfg['username'] == 'root':
         raise InstallError('Nombre de usuario no válido.')
     if len(cfg['password']) < 8:
-        raise InstallError('La contraseña debe tener al menos 8 caracteres.')
+        raise InstallError('La contraseña del usuario debe tener al menos 8 caracteres.')
+    if len(cfg['root_password']) < 8:
+        raise InstallError('La contraseña root debe tener al menos 8 caracteres.')
     tz = cfg['timezone']
     if tz.startswith('/') or '..' in tz.split('/') or not (Path('/usr/share/zoneinfo') / tz).is_file():
         raise InstallError('Zona horaria no válida.')
@@ -182,15 +184,37 @@ def chroot(cmd, *, input_text=None, check=True):
 
 def configure_branding():
     progress(0.70, 'Aplicando identidad DexOS')
-    copy_if('/usr/share/backgrounds/dexos.svg', TARGET / 'usr/share/backgrounds/dexos.svg')
+    copy_if('/usr/share/dexos/boot.jpg', TARGET / 'usr/share/dexos/boot.jpg')
+    copy_if('/usr/share/dexos/boot.ppm', TARGET / 'usr/share/dexos/boot.ppm')
+    copy_if('/usr/share/dexos/wallpaper', TARGET / 'usr/share/dexos/wallpaper.jpg')
+    copy_if('/usr/local/bin/dexos-session', TARGET / 'usr/local/bin/dexos-session', 0o755)
+    copy_if('/usr/local/bin/dexos-session-splash', TARGET / 'usr/local/bin/dexos-session-splash', 0o755)
+    copy_if('/usr/share/dexos/installed/dexos-splash-keys', TARGET / 'usr/local/sbin/dexos-splash-keys', 0o755)
+    copy_if('/usr/share/dexos/installed/dexos-bootsplash', TARGET / 'etc/init.d/dexos-bootsplash', 0o755)
+    copy_if('/usr/share/dexos/installed/dexos-bootsplash-finish', TARGET / 'etc/init.d/dexos-bootsplash-finish', 0o755)
+    copy_if('/usr/share/dexos/installed/dexos-wifi-init', TARGET / 'etc/init.d/dexos-wifi-init', 0o755)
     copy_if('/usr/local/sbin/dexos-xsetup', TARGET / 'usr/local/sbin/dexos-xsetup', 0o755)
+    copy_if('/usr/local/bin/dexos-apply-theme', TARGET / 'usr/local/bin/dexos-apply-theme', 0o755)
+    copy_if('/etc/xdg/autostart/dexos-branding.desktop', TARGET / 'etc/xdg/autostart/dexos-branding.desktop')
     copy_if('/etc/xdg/xfce4/xfconf/xfce-perchannel-xml', TARGET / 'etc/xdg/xfce4/xfconf/xfce-perchannel-xml')
     copy_if('/etc/skel/.config/gtk-3.0', TARGET / 'etc/skel/.config/gtk-3.0')
     write(TARGET / 'etc/os-release', '''NAME="DexOS"\nPRETTY_NAME="DexOS"\nID=dexos\nID_LIKE=alpine\nVERSION_ID="0.1"\nVERSION="0.1"\n''')
     write(TARGET / 'etc/issue', 'DexOS \\n \\l\n')
-    write(TARGET / 'etc/lightdm/lightdm.conf.d/10-dexos.conf', '''[LightDM]\nlogind-check-graphical=false\n\n[Seat:*]\ndisplay-setup-script=/usr/local/sbin/dexos-xsetup\ngreeter-session=lightdm-gtk-greeter\nuser-session=xfce\n''')
-    write(TARGET / 'etc/lightdm/lightdm-gtk-greeter.conf', '''[greeter]\nbackground=/usr/share/backgrounds/dexos.svg\ntheme-name=adw-gtk3-dark\nicon-theme-name=Adwaita-Xfce\nfont-name=DejaVu Sans 11\nclock-format=%A %d de %B  %H:%M\nindicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power\nuser-background=false\n''')
+    write(TARGET / 'etc/lightdm/lightdm.conf.d/10-dexos.conf', '''[LightDM]\nlogind-check-graphical=false\n\n[Seat:*]\ndisplay-setup-script=/usr/local/sbin/dexos-xsetup\ngreeter-session=lightdm-gtk-greeter\nuser-session=dexos\n''')
+    write(TARGET / 'etc/lightdm/lightdm-gtk-greeter.conf', '''[greeter]\nbackground=/usr/share/dexos/wallpaper\ntheme-name=adw-gtk3-dark\nicon-theme-name=Adwaita-Xfce\nfont-name=DejaVu Sans 11\nclock-format=%A %d de %B  %H:%M\nindicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power\nuser-background=false\n''')
     write(TARGET / 'etc/doas.d/20-dexos.conf', 'permit :wheel\n', 0o600)
+    write(TARGET / 'etc/sudoers.d/10-wheel', '%wheel ALL=(ALL:ALL) ALL\n', 0o440)
+    write(TARGET / 'usr/share/xsessions/dexos.desktop', '[Desktop Entry]\nName=DexOS\nComment=DexOS XFCE Session\nExec=/usr/local/bin/dexos-session\nTryExec=/usr/local/bin/dexos-session\nType=Application\nDesktopNames=XFCE\n')
+
+def patch_installed_initramfs(text):
+    """Enable DexOS bootsplash from the installed initramfs when no ISO is present."""
+    if '/usr/share/dexos/boot.ppm' in text:
+        return text
+    needle = 'for fbsplash in /media/*/fbsplash.ppm; do\n\t\t[ -e "$fbsplash" ] && break\n\tdone'
+    if needle not in text:
+        raise InstallError('La versión de mkinitfs no contiene el punto de integración de bootsplash esperado.')
+    return text.replace(needle, needle + '\n\t[ -e "$fbsplash" ] || fbsplash=/usr/share/dexos/boot.ppm', 1)
+
 
 def configure_system(cfg, p2, p3):
     progress(0.74, 'Configurando sistema')
@@ -207,11 +231,12 @@ def configure_system(cfg, p2, p3):
 
     configure_branding()
 
-    chroot(['/usr/sbin/adduser', '-D', '-s', '/bin/ash', cfg['username']])
+    chroot(['/usr/sbin/adduser', '-D', '-s', '/bin/bash', cfg['username']])
     for group in ['wheel', 'audio', 'video', 'input', 'netdev', 'plugdev']:
         chroot(['/usr/sbin/addgroup', cfg['username'], group], check=False)
-    chroot(['/usr/sbin/chpasswd'], input_text=f"{cfg['username']}:{cfg['password']}\n")
-    chroot(['/usr/bin/passwd', '-l', 'root'], check=False)
+    chroot(['/usr/sbin/chpasswd'], input_text=f"{cfg['username']}:{cfg['password']}\nroot:{cfg['root_password']}\n")
+    chroot(['/usr/sbin/usermod', '-s', '/bin/bash', 'root'], check=False)
+    write(TARGET / 'etc/default/useradd', 'SHELL=/bin/bash\n')
 
     # Copy the red GTK defaults into the new user's home too.
     home = TARGET / 'home' / cfg['username']
@@ -223,17 +248,23 @@ def configure_system(cfg, p2, p3):
     write(TARGET / 'etc/fstab', f'''UUID={root_uuid}\t/\text4\tdefaults,noatime\t0 1\nUUID={efi_uuid}\t/boot/efi\tvfat\tumask=0077\t0 2\ntmpfs\t/tmp\ttmpfs\tnosuid,nodev\t0 0\n''')
     write(TARGET / 'etc/apk/repositories', '''https://dl-cdn.alpinelinux.org/alpine/edge/main\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\n''')
     write(TARGET / 'etc/mkinitfs/features.d/dexosroot.modules', '''kernel/drivers/virtio/virtio.ko*\nkernel/drivers/virtio/virtio_ring.ko*\nkernel/drivers/virtio/virtio_pci.ko*\nkernel/drivers/block/virtio_blk.ko*\nkernel/fs/ext4/ext4.ko*\n''')
+    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.files', '/usr/share/dexos/boot.ppm\n')
+    init_script = TARGET / 'usr/share/mkinitfs/initramfs-init'
+    if not init_script.is_file():
+        raise InstallError('Falta initramfs-init en el sistema destino.')
+    init_script.write_text(patch_installed_initramfs(init_script.read_text()))
     write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme dexosroot"\n')
 
     # Standard installed-system OpenRC, never the Live-only services.
     for service, level in [
         ('devfs','sysinit'), ('dmesg','sysinit'), ('udev','sysinit'), ('udev-trigger','sysinit'), ('udev-settle','sysinit'),
-        ('udev-postmount','default'), ('hwclock','boot'), ('modules','boot'), ('sysctl','boot'), ('hostname','boot'),
-        ('bootmisc','boot'), ('syslog','boot'), ('dbus','default'), ('elogind','default'), ('networkmanager','default'),
-        ('bluetooth','default'), ('lightdm','default'), ('mount-ro','shutdown'), ('killprocs','shutdown'), ('savecache','shutdown')]:
+        ('udev-postmount','default'), ('swclock','boot'), ('modules','boot'), ('sysctl','boot'), ('hostname','boot'),
+        ('bootmisc','boot'), ('syslog','boot'), ('dexos-bootsplash','boot'), ('dbus','default'), ('elogind','default'), ('dexos-wifi-init','default'), ('networkmanager','default'), ('chronyd','default'),
+        ('bluetooth','default'), ('lightdm','default'), ('dexos-bootsplash-finish','default'), ('mount-ro','shutdown'), ('killprocs','shutdown'), ('savecache','shutdown')]:
         chroot(['/sbin/rc-update', 'add', service, level], check=False)
     chroot(['/sbin/rc-update', 'del', 'mdev', 'sysinit'], check=False)
     chroot(['/sbin/rc-update', 'del', 'hwdrivers', 'sysinit'], check=False)
+    chroot(['/sbin/rc-update', 'del', 'hwclock', 'boot'], check=False)
     for d in (TARGET / 'etc/runlevels').glob('*/modloop'):
         try: d.unlink()
         except FileNotFoundError: pass
@@ -265,7 +296,7 @@ def rewrite_grub_root(text, root_uuid):
             line = re.sub(r'\s+root=\S+', '', line)
             line = re.sub(r'\s+rootfstype=\S+', '', line)
             line = re.sub(r'\s+modules=\S+', '', line)
-            line += f' root=UUID={root_uuid} rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4'
+            line += f' root=UUID={root_uuid} quiet splash rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4'
         fixed.append(line)
     return '\n'.join(fixed) + '\n'
 
@@ -283,7 +314,7 @@ def install_bootloader(disk, root_uuid):
     fallback = TARGET / 'boot/efi/EFI/BOOT/BOOTX64.EFI'
     fallback.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(efi, fallback)
-    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=3\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_CMDLINE_LINUX_DEFAULT="quiet rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
+    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=3\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_CMDLINE_LINUX_DEFAULT="quiet splash rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
     chroot(['/usr/sbin/grub-mkconfig', '-o', '/boot/grub/grub.cfg'])
     grub_cfg = TARGET / 'boot/grub/grub.cfg'
     text = grub_cfg.read_text()

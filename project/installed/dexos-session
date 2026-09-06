@@ -1,0 +1,3 @@
+#!/bin/sh
+/usr/local/bin/dexos-session-splash >/tmp/dexos-session-splash.log 2>&1 &
+exec startxfce4

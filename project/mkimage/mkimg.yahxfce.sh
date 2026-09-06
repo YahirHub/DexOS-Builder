@@ -14,7 +14,7 @@ profile_yahxfce() {
     initrd_ucode="/boot/amd-ucode.img /boot/intel-ucode.img"
     syslinux_timeout=10
     syslinux_prompt=0
-    apks="alpine-base alpine-conf doas bash shadow sudo python3 py3-gobject3 \
+    apks="alpine-base alpine-conf doas bash shadow sudo python3 py3-gobject3 chrony chrony-openrc firefox \
         dbus dbus-x11 dbus-openrc \
         eudev eudev-openrc udev-init-scripts udev-init-scripts-openrc \
         elogind elogind-openrc polkit-elogind \
@@ -26,7 +26,7 @@ profile_yahxfce() {
         font-dejavu font-noto adw-gtk3 adwaita-xfce-icon-theme xfce-polkit \
         gvfs udisks2 thunar-volman tumbler \
         networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli network-manager-applet \
-        iw wpa_supplicant wireless-regdb bluez bluez-openrc \
+        iw util-linux-misc wireless-tools wpa_supplicant wireless-regdb bluez bluez-openrc \
         pipewire pipewire-pulse pipewire-alsa wireplumber alsa-utils pavucontrol \
         upower brightnessctl util-linux sfdisk dosfstools e2fsprogs efibootmgr grub-bios grub-efi syslinux parted \
         pciutils usbutils tzdata ca-certificates curl linux-lts linux-firmware"

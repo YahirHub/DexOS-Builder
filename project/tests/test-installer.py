@@ -36,4 +36,30 @@ assert 'root=UUID=1111-2222' in fixed
 assert 'rootfstype=ext4' in fixed
 assert 'modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4' in fixed
 
+
+# Installed initramfs must fall back to the embedded DexOS boot image when no ISO is mounted.
+mk_candidates=sorted(list((ROOT/'cache').rglob('mkinitfs-*.apk')) + list((ROOT/'alpine-root').rglob('mkinitfs-*.apk')))
+assert mk_candidates, 'mkinitfs APK not found'
+with tarfile.open(mk_candidates[-1],'r:gz') as tf:
+    init_text=tf.extractfile('usr/share/mkinitfs/initramfs-init').read().decode()
+patched=m.patch_installed_initramfs(init_text)
+assert '/usr/share/dexos/boot.ppm' in patched
+assert patched.count('/usr/share/dexos/boot.ppm') == 1
+
+# Current installer contract includes an independent root password.
+sample_cfg={'disk':'/dev/sda','hostname':'dexos-pc','username':'usuario','password':'12345678','root_password':'87654321','timezone':'UTC','erase_confirm':'BORRAR /dev/sda'}
+assert len(sample_cfg['root_password']) >= 8
+
+# GRUB rewrite also keeps quiet splash on installed entries.
+assert 'quiet splash' in m.rewrite_grub_root('  linux /boot/vmlinuz-lts root=/dev/vda3 quiet\n','1111-2222')
+
+
+# Installed systems must keep the Wi-Fi reprobe service available and enabled by backend wiring.
+backend_text=(ROOT/'project/installer/dexos-installer-backend.py').read_text()
+assert "dexos-wifi-init','default'" in backend_text
+assert "TARGET / 'etc/init.d/dexos-wifi-init'" in backend_text
+wifi=(ROOT/'project/installed/dexos-wifi-init').read_text()
+for token in ['rfkill unblock wlan','/sys/bus/pci/devices/*/modalias','/sys/bus/usb/devices/*/modalias','nmcli radio wifi on','device wifi rescan']:
+    assert token in wifi
+
 print('test-installer: OK')

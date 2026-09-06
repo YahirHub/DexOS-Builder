@@ -1,0 +1,69 @@
+#!/sbin/openrc-run
+name="DexOS Wi-Fi detection"
+description="Detect and enable Wi-Fi hardware before NetworkManager"
+
+depend() {
+    need udev udev-trigger
+    after udev-settle udev-postmount
+    before networkmanager
+}
+
+load_modalias_bus() {
+    pattern=$1
+    for aliasfile in $pattern; do
+        [ -r "$aliasfile" ] || continue
+        alias=$(cat "$aliasfile" 2>/dev/null || true)
+        [ -n "$alias" ] || continue
+        modprobe "$alias" 2>/dev/null || true
+    done
+}
+
+start() {
+    ebegin "Detecting Wi-Fi hardware"
+
+    # Firmware/BIOS or another OS may leave the radio soft-blocked.
+    rfkill unblock wlan 2>/dev/null || true
+    rfkill unblock wifi 2>/dev/null || true
+    rfkill unblock all 2>/dev/null || true
+
+    # Ask udev to enumerate buses again after firmware and modloop are ready.
+    udevadm trigger --action=add --subsystem-match=pci 2>/dev/null || true
+    udevadm trigger --action=add --subsystem-match=usb 2>/dev/null || true
+    udevadm settle --timeout=12 2>/dev/null || true
+
+    # Load the exact drivers advertised by PCI/USB modaliases. This avoids
+    # guessing a chipset and supports adapters added in future kernels too.
+    load_modalias_bus '/sys/bus/pci/devices/*/modalias'
+    load_modalias_bus '/sys/bus/usb/devices/*/modalias'
+
+    # Fallback for common laptop/USB Wi-Fi families if firmware exposes the
+    # device late or the modalias was not present during the first pass.
+    for mod in \
+        iwlwifi \
+        rtw88_pci rtw88_usb \
+        rtw89_pci rtw89_usb \
+        mt7921e mt7921u mt7925e mt7925u mt76x2e mt76x2u mt7601u \
+        ath9k ath9k_htc ath10k_pci ath10k_usb ath11k_pci ath12k \
+        brcmfmac brcmsmac b43 rtl8xxxu; do
+        modprobe "$mod" 2>/dev/null || true
+    done
+
+    udevadm trigger --action=add --subsystem-match=net 2>/dev/null || true
+    udevadm settle --timeout=12 2>/dev/null || true
+
+    for dev in /sys/class/net/*; do
+        [ -e "$dev" ] || continue
+        name=${dev##*/}
+        [ "$name" = lo ] && continue
+        if [ -d "$dev/wireless" ] || [ -e "$dev/phy80211" ]; then
+            ip link set "$name" up 2>/dev/null || true
+        fi
+    done
+
+    # Safe no-ops before NetworkManager starts; useful when the service is
+    # manually restarted later from the installed system.
+    nmcli radio wifi on 2>/dev/null || true
+    nmcli device wifi rescan 2>/dev/null || true
+
+    eend 0
+}

@@ -5,7 +5,7 @@ TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 sh -n "$ROOT/project/mkimage/mkimg.yahxfce.sh"
 sh -n "$ROOT/project/mkimage/genapkovl-yahxfce.sh"
 cd "$TMP"
-"$ROOT/project/mkimage/genapkovl-yahxfce.sh" dexos-live
+DEXOS_WALLPAPER_ASSET="$ROOT/project/assets/dexos-wallpaper.jpg" "$ROOT/project/mkimage/genapkovl-yahxfce.sh" dexos-live
 mkdir rootfs; tar -xzf dexos-live.apkovl.tar.gz -C rootfs
 tar -tvzf dexos-live.apkovl.tar.gz | awk '$6=="./"{print $1}' | grep -q '^drwxr-xr-x'
 for s in udev udev-trigger udev-settle; do test -L "rootfs/etc/runlevels/sysinit/$s" || { echo "missing $s"; exit 1; }; done
@@ -57,14 +57,52 @@ grep -qx 'python3' rootfs/etc/apk/world
 grep -qx 'py3-gobject3' rootfs/etc/apk/world
 grep -q 'Instalar-DexOS.desktop' rootfs/etc/init.d/dexos-live-user
 grep -q '#7a3438' rootfs/etc/skel/.config/gtk-3.0/gtk.css
-grep -q '/usr/share/backgrounds/dexos.svg' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+grep -q '/usr/share/dexos/wallpaper' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
 grep -q '^NAME="DexOS"$' rootfs/etc/os-release
 grep -q '^PRETTY_NAME="DexOS Live"$' rootfs/etc/os-release
 grep -q '^DexOS Live$' rootfs/etc/issue
 grep -q '^Welcome to DexOS Live$' rootfs/etc/motd
 test -f rootfs/etc/xdg/autostart/dexos-branding.desktop
 grep -q '^Exec=/usr/local/bin/dexos-apply-theme$' rootfs/etc/xdg/autostart/dexos-branding.desktop
-grep -q "wall=/usr/share/backgrounds/dexos.svg" rootfs/usr/local/bin/dexos-apply-theme
+grep -q "wall=/usr/share/dexos/wallpaper" rootfs/usr/local/bin/dexos-apply-theme
 grep -q "grep '/last-image\$'" rootfs/usr/local/bin/dexos-apply-theme
 grep -q "xsetroot -solid '#6b2a2e'" rootfs/usr/local/bin/dexos-apply-theme
+
+# DexOS UX/runtime additions.
+grep -qx 'sudo' rootfs/etc/apk/world
+grep -qx 'bash' rootfs/etc/apk/world
+grep -qx 'firefox' rootfs/etc/apk/world
+grep -qx 'chrony' rootfs/etc/apk/world
+grep -qx 'chrony-openrc' rootfs/etc/apk/world
+test -L rootfs/etc/runlevels/boot/swclock
+test ! -e rootfs/etc/runlevels/boot/hwclock
+test -L rootfs/etc/runlevels/default/chronyd
+grep -q 'adduser -D -h /home/dexos -s /bin/bash dexos' rootfs/etc/init.d/dexos-live-user
+grep -q '^user-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
+grep -q '^autologin-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
+grep -q '^background=/usr/share/dexos/wallpaper$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
+test -s rootfs/usr/share/dexos/boot.jpg
+test -s rootfs/usr/share/dexos/boot.ppm
+test -s rootfs/usr/share/dexos/wallpaper
+head -c 2 rootfs/usr/share/dexos/boot.ppm | grep -q '^P6$'
+test -x rootfs/usr/local/bin/dexos-session-splash
+test -x rootfs/usr/local/bin/dexos-session
+grep -q '^Exec=/usr/local/bin/dexos-session$' rootfs/usr/share/xsessions/dexos.desktop
+grep -q 'pidof.*xfce4-panel' rootfs/usr/local/bin/dexos-session-splash || grep -q "alive('xfce4-panel')" rootfs/usr/local/bin/dexos-session-splash
+test -x rootfs/usr/share/dexos/installed/dexos-bootsplash
+test -x rootfs/usr/share/dexos/installed/dexos-bootsplash-finish
+test -x rootfs/usr/share/dexos/installed/dexos-splash-keys
+
+
+# Wi-Fi reprobe service: unblocks radio, resolves modaliases and notifies NetworkManager.
+test -x rootfs/etc/init.d/dexos-wifi-init
+test -L rootfs/etc/runlevels/default/dexos-wifi-init
+grep -q 'rfkill unblock wlan' rootfs/etc/init.d/dexos-wifi-init
+grep -q '/sys/bus/pci/devices/\*/modalias' rootfs/etc/init.d/dexos-wifi-init
+grep -q '/sys/bus/usb/devices/\*/modalias' rootfs/etc/init.d/dexos-wifi-init
+grep -q 'udevadm trigger --action=add --subsystem-match=net' rootfs/etc/init.d/dexos-wifi-init
+grep -q 'nmcli radio wifi on' rootfs/etc/init.d/dexos-wifi-init
+grep -q 'device wifi rescan' rootfs/etc/init.d/dexos-wifi-init
+test -x rootfs/usr/share/dexos/installed/dexos-wifi-init
+
 echo 'test-config: OK'

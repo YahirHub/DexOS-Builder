@@ -3,8 +3,29 @@ HOSTNAME="${1:-dexos-live}"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 INSTALLER_ASSETS="$SCRIPT_DIR"
 [ -f "$INSTALLER_ASSETS/dexos-installer.py" ] || INSTALLER_ASSETS="$SCRIPT_DIR/../installer"
+BRAND_ASSETS="$SCRIPT_DIR"
+[ -f "$BRAND_ASSETS/dexos-boot.jpg" ] || BRAND_ASSETS="$SCRIPT_DIR/../assets"
+SYSTEM_ASSETS="$SCRIPT_DIR"
+[ -f "$SYSTEM_ASSETS/dexos-session-splash.py" ] || SYSTEM_ASSETS="$SCRIPT_DIR/../installed"
 for f in dexos-installer.py dexos-installer-backend.py installer-packages.txt; do
     [ -f "$INSTALLER_ASSETS/$f" ] || { echo "Falta recurso del instalador: $f" >&2; exit 1; }
+done
+for f in dexos-boot.jpg dexos-boot.ppm; do
+    [ -f "$BRAND_ASSETS/$f" ] || { echo "Falta recurso visual: $f" >&2; exit 1; }
+done
+WALLPAPER_ASSET="${DEXOS_WALLPAPER_ASSET:-}"
+if [ -n "$WALLPAPER_ASSET" ] && [ ! -s "$WALLPAPER_ASSET" ]; then
+    echo "Wallpaper indicado no existe: $WALLPAPER_ASSET" >&2
+    exit 1
+fi
+if [ -z "$WALLPAPER_ASSET" ]; then
+    for candidate in         "$BRAND_ASSETS/dexos-wallpaper-user"         "$BRAND_ASSETS/dexos-wallpaper-user.png"         "$BRAND_ASSETS/dexos-wallpaper-user.jpg"         "$BRAND_ASSETS/dexos-wallpaper-user.jpeg"         "$BRAND_ASSETS/dexos-wallpaper"; do
+        if [ -s "$candidate" ]; then WALLPAPER_ASSET="$candidate"; break; fi
+    done
+fi
+[ -n "$WALLPAPER_ASSET" ] || { echo "Falta recurso visual de wallpaper exacto" >&2; exit 1; }
+for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init; do
+    [ -f "$SYSTEM_ASSETS/$f" ] || { echo "Falta recurso del sistema: $f" >&2; exit 1; }
 done
 tmp="$(mktemp -d)"
 chmod 0755 "$tmp"
@@ -41,6 +62,7 @@ makefile root:root 0644 "$tmp/etc/apk/world" <<'EOF_WORLD'
 alpine-base
 alpine-conf
 doas
+sudo
 bash
 shadow
 python3
@@ -93,6 +115,8 @@ networkmanager-wifi
 networkmanager-cli
 network-manager-applet
 iw
+util-linux-misc
+wireless-tools
 wpa_supplicant
 wireless-regdb
 bluez
@@ -119,6 +143,9 @@ usbutils
 tzdata
 ca-certificates
 curl
+chrony
+chrony-openrc
+firefox
 EOF_WORLD
 
 # evdev crea /dev/input/event*; Xorg/libinput depende de estos nodos.
@@ -156,14 +183,14 @@ logind-check-graphical=false
 [Seat:*]
 display-setup-script=/usr/local/sbin/dexos-xsetup
 greeter-session=lightdm-gtk-greeter
-user-session=xfce
+user-session=dexos
 autologin-user=dexos
 autologin-user-timeout=0
-autologin-session=xfce
+autologin-session=dexos
 EOF_LDM
 makefile root:root 0644 "$tmp/etc/lightdm/lightdm-gtk-greeter.conf" <<'EOF_GREETER'
 [greeter]
-background=/usr/share/backgrounds/dexos.svg
+background=/usr/share/dexos/wallpaper
 theme-name=adw-gtk3-dark
 icon-theme-name=Adwaita-Xfce
 font-name=DejaVu Sans 11
@@ -172,10 +199,27 @@ indicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power
 user-background=false
 EOF_GREETER
 
-mkdir -p "$tmp/usr/share/backgrounds"
-makefile root:root 0644 "$tmp/usr/share/backgrounds/dexos.svg" <<'EOF_SVG'
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2b1719"/><stop offset=".58" stop-color="#512629"/><stop offset="1" stop-color="#6b2a2e"/></linearGradient></defs><rect width="1920" height="1080" fill="url(#g)"/><path d="M0 880 L390 520 L620 735 L930 410 L1240 720 L1510 500 L1920 850 L1920 1080 L0 1080 Z" fill="#1d1012" opacity=".72"/><circle cx="1680" cy="180" r="120" fill="#8f3e42" opacity=".15"/><text x="110" y="170" font-family="DejaVu Sans" font-size="82" fill="#f0e5e5" font-weight="600">DexOS</text><text x="116" y="226" font-family="DejaVu Sans" font-size="28" fill="#d1a8aa">XFCE • ligero • estable</text></svg>
-EOF_SVG
+mkdir -p "$tmp/usr/share/dexos" "$tmp/usr/share/xsessions" "$tmp/usr/local/bin" "$tmp/usr/local/sbin" "$tmp/etc/init.d"
+install -m 0644 "$BRAND_ASSETS/dexos-boot.jpg" "$tmp/usr/share/dexos/boot.jpg"
+install -m 0644 "$BRAND_ASSETS/dexos-boot.ppm" "$tmp/usr/share/dexos/boot.ppm"
+install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/dexos/wallpaper"
+install -m 0755 "$SYSTEM_ASSETS/dexos-session-splash.py" "$tmp/usr/local/bin/dexos-session-splash"
+install -m 0755 "$SYSTEM_ASSETS/dexos-session" "$tmp/usr/local/bin/dexos-session"
+mkdir -p "$tmp/usr/share/dexos/installed"
+install -m 0755 "$SYSTEM_ASSETS/dexos-splash-keys" "$tmp/usr/share/dexos/installed/dexos-splash-keys"
+install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash" "$tmp/usr/share/dexos/installed/dexos-bootsplash"
+install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash-finish" "$tmp/usr/share/dexos/installed/dexos-bootsplash-finish"
+install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/usr/share/dexos/installed/dexos-wifi-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/etc/init.d/dexos-wifi-init"
+makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
+[Desktop Entry]
+Name=DexOS
+Comment=DexOS XFCE Session
+Exec=/usr/local/bin/dexos-session
+TryExec=/usr/local/bin/dexos-session
+Type=Application
+DesktopNames=XFCE
+EOF_DEXOS_SESSION
 
 # Xorg pinta rojo mate inmediatamente, antes de que XFCE termine su primer frame.
 makefile root:root 0755 "$tmp/usr/local/sbin/dexos-xsetup" <<'EOF_XSETUP'
@@ -200,13 +244,13 @@ makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings
 EOF_XSET
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml" <<'EOF_DESKTOP_XFCE'
 <?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/backgrounds/dexos.svg"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
+<channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/dexos/wallpaper"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
 EOF_DESKTOP_XFCE
 
 # Aplica la identidad DexOS al monitor real que XFCE detecte (VGA-1, Virtual-1, eDP-1, etc.).
 makefile root:root 0755 "$tmp/usr/local/bin/dexos-apply-theme" <<'EOF_APPLY_THEME'
 #!/bin/sh
-wall=/usr/share/backgrounds/dexos.svg
+wall=/usr/share/dexos/wallpaper
 /usr/bin/xsetroot -solid '#6b2a2e' 2>/dev/null || true
 
 i=0
@@ -256,7 +300,7 @@ description="Create the unprivileged DexOS Live desktop account"
 depend(){ need localmount; before lightdm; }
 start(){
     if ! id dexos >/dev/null 2>&1; then
-        adduser -D -h /home/dexos -s /bin/ash dexos
+        adduser -D -h /home/dexos -s /bin/bash dexos
         for g in wheel audio video input netdev plugdev; do getent group "$g" >/dev/null 2>&1 && addgroup dexos "$g" || true; done
     fi
     passwd -d dexos >/dev/null 2>&1 || true
@@ -460,7 +504,7 @@ rc_add udev sysinit
 rc_add udev-trigger sysinit
 rc_add udev-settle sysinit
 rc_add udev-postmount default
-rc_add hwclock boot
+rc_add swclock boot
 rc_add modules boot
 rc_add sysctl boot
 rc_add hostname boot
@@ -469,7 +513,9 @@ rc_add syslog boot
 rc_add dexos-splash-keys boot
 rc_add dbus default
 rc_add elogind default
+rc_add dexos-wifi-init default
 rc_add networkmanager default
+rc_add chronyd default
 rc_add bluetooth default
 rc_add dexos-live-user default
 rc_add lightdm default

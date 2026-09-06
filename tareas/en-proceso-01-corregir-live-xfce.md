@@ -65,3 +65,11 @@ Corregir la sesión Live XFCE congelada.
 - [ ] Reempaquetar ISO con backend corregido.
 - [ ] Reinstalar en disco virtual limpio.
 - [ ] Arrancar sin ISO y confirmar login/LightDM/XFCE.
+
+## Wi-Fi y wallpaper 2026-09-06
+- [x] Añadir re-sondeo y desbloqueo Wi-Fi antes de NetworkManager.
+- [x] Incluir herramientas y firmware para Wi-Fi real.
+- [x] Integrar el wallpaper exacto proporcionado por el usuario.
+- [x] Verificar hash idéntico del wallpaper dentro de la ISO.
+- [x] Recompilar ISO con correcciones.
+- [ ] Probar en hardware físico que aparece la interfaz Wi-Fi.

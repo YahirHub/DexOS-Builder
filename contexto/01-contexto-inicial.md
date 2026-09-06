@@ -93,3 +93,13 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
   - se precargan `virtio,virtio_ring,virtio_pci,virtio_blk,ext4` mediante `modules=` y se fija `rootfstype=ext4`;
   - se rechaza la instalación si persiste un `root=/dev/...` en `grub.cfg`.
 - Se añadió prueba de regresión que parte de un `linux ... root=/dev/vda3` y exige salida con UUID y módulos VirtIO.
+
+## Wi-Fi real y wallpaper exacto 2026-09-06
+- Se añadió `dexos-wifi-init` al Live y al sistema instalado, antes de NetworkManager.
+- El servicio desbloquea RFKill, reenumera PCI/USB, carga drivers por modalias y añade fallback para Intel, Realtek, MediaTek, Atheros y Broadcom.
+- Se añadieron `util-linux-misc` (provee `rfkill`) y `wireless-tools`; se mantienen NetworkManager Wi-Fi, iw, wpa_supplicant, wireless-regdb y linux-firmware completo.
+- El wallpaper oficial fue descargado desde la URL dada por el usuario y guardado como `project/assets/dexos-wallpaper-user.png`.
+- SHA-256 del wallpaper exacto: `573f997a56dbacdac4410a1a664277c2990107205e12af52de21b671ff8fbefd`.
+- El build ahora falla si falta el wallpaper del usuario; no vuelve a sustituirlo silenciosamente por el generado.
+- Se verificó byte a byte que `/usr/share/dexos/wallpaper` dentro de la ISO coincide con el archivo fuente.
+- ISO resultante SHA-256: `c529655417d62bbbf85114c9ce4d0f5959aa71d29676e25e3eb350f271a6a291`.

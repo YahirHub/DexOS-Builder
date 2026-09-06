@@ -117,18 +117,20 @@ class Installer(Gtk.Assistant):
         self.tz_page=self.add_page(b,'Zona horaria',Gtk.AssistantPageType.CONTENT,True)
 
         # Account
-        b=self.box(); self.heading(b,'Usuario','La cuenta root quedará bloqueada; administrarás el sistema con doas y tu contraseña.')
+        b=self.box(); self.heading(b,'Usuario','El usuario principal tendrá sudo. También puedes definir una contraseña independiente para root.')
         grid=Gtk.Grid(column_spacing=12,row_spacing=12)
         self.hostname=Gtk.Entry(); self.hostname.set_text('dexos-pc')
         self.username=Gtk.Entry(); self.username.set_text('usuario')
         self.password=Gtk.Entry(); self.password.set_visibility(False)
         self.password2=Gtk.Entry(); self.password2.set_visibility(False)
-        for r,(label,w) in enumerate([('Nombre del equipo',self.hostname),('Usuario',self.username),('Contraseña',self.password),('Repetir contraseña',self.password2)]):
+        self.root_password=Gtk.Entry(); self.root_password.set_visibility(False)
+        self.root_password2=Gtk.Entry(); self.root_password2.set_visibility(False)
+        for r,(label,w) in enumerate([('Nombre del equipo',self.hostname),('Usuario',self.username),('Contraseña',self.password),('Repetir contraseña',self.password2),('Contraseña root',self.root_password),('Repetir contraseña root',self.root_password2)]):
             l=Gtk.Label(label=label); l.set_xalign(1); grid.attach(l,0,r,1,1); grid.attach(w,1,r,1,1)
         b.pack_start(grid,False,False,8)
         self.account_error=Gtk.Label(); self.account_error.set_xalign(0); b.pack_start(self.account_error,False,False,0)
         self.account_page=self.add_page(b,'Usuario',Gtk.AssistantPageType.CONTENT,False)
-        for e in [self.hostname,self.username,self.password,self.password2]: e.connect('changed',self.validate_account)
+        for e in [self.hostname,self.username,self.password,self.password2,self.root_password,self.root_password2]: e.connect('changed',self.validate_account)
         self.validate_account()
 
         # Confirm
@@ -160,7 +162,9 @@ class Installer(Gtk.Assistant):
         if not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?',self.hostname.get_text()): ok=False; msg='Nombre de equipo no válido.'
         elif not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}',self.username.get_text()) or self.username.get_text()=='root': ok=False; msg='Usuario no válido.'
         elif len(self.password.get_text())<8: ok=False; msg='La contraseña debe tener al menos 8 caracteres.'
-        elif self.password.get_text()!=self.password2.get_text(): ok=False; msg='Las contraseñas no coinciden.'
+        elif self.password.get_text()!=self.password2.get_text(): ok=False; msg='Las contraseñas del usuario no coinciden.'
+        elif len(self.root_password.get_text())<8: ok=False; msg='La contraseña root debe tener al menos 8 caracteres.'
+        elif self.root_password.get_text()!=self.root_password2.get_text(): ok=False; msg='Las contraseñas root no coinciden.'
         self.account_error.set_text(msg)
         if hasattr(self,'account_page'): self.set_page_complete(self.account_page,ok)
 
@@ -184,7 +188,7 @@ class Installer(Gtk.Assistant):
 
     def cfg(self):
         d=self.selected_disk()
-        return {'disk':d,'hostname':self.hostname.get_text(),'username':self.username.get_text(),'password':self.password.get_text(),'timezone':self.timezone(),'erase_confirm':f'BORRAR {d}'}
+        return {'disk':d,'hostname':self.hostname.get_text(),'username':self.username.get_text(),'password':self.password.get_text(),'root_password':self.root_password.get_text(),'timezone':self.timezone(),'erase_confirm':f'BORRAR {d}'}
 
     def append_log(self,text):
         buf=self.logview.get_buffer(); end=buf.get_end_iter(); buf.insert(end,text+'\n'); mark=buf.create_mark(None,buf.get_end_iter(),False); self.logview.scroll_mark_onscreen(mark)
