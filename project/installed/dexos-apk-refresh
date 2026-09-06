@@ -1,0 +1,27 @@
+#!/sbin/openrc-run
+name="DexOS APK repositories"
+description="Refresh Alpine package indexes after networking becomes available"
+LOG=/var/log/dexos-apk.log
+
+depend() {
+    need networkmanager
+    after networkmanager dexos-wifi-refresh
+}
+
+start() {
+    ebegin "Preparing APK repositories"
+    (
+        # Do not delay the desktop. Wait briefly for NetworkManager connectivity.
+        i=0
+        while [ "$i" -lt 20 ]; do
+            if nmcli -t -f STATE general 2>/dev/null | grep -qx 'connected'; then
+                break
+            fi
+            sleep 1
+            i=$((i + 1))
+        done
+        echo "--- DexOS APK refresh $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true) ---" > "$LOG"
+        apk update >> "$LOG" 2>&1 || true
+    ) &
+    eend 0
+}

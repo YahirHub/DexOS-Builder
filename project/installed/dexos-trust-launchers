@@ -1,0 +1,15 @@
+#!/bin/sh
+# Mark DexOS desktop launchers trusted after GVfs/XFCE metadata services exist.
+launcher="$HOME/Desktop/Instalar-DexOS.desktop"
+i=0
+while [ "$i" -lt 40 ] && [ ! -e "$launcher" ]; do sleep 0.25; i=$((i + 1)); done
+[ -e "$launcher" ] || exit 0
+chmod 0755 "$launcher" 2>/dev/null || true
+# Newer Thunar/xfdesktop also consult GIO metadata in addition to +x.
+i=0
+while [ "$i" -lt 20 ]; do
+    if gio set "$launcher" metadata::trusted true 2>/dev/null; then break; fi
+    sleep 0.25; i=$((i + 1))
+done
+xfdesktop --reload >/dev/null 2>&1 || true
+exit 0

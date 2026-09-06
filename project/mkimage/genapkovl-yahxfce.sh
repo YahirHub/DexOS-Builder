@@ -24,7 +24,9 @@ if [ -z "$WALLPAPER_ASSET" ]; then
     done
 fi
 [ -n "$WALLPAPER_ASSET" ] || { echo "Falta recurso visual de wallpaper exacto" >&2; exit 1; }
-for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh; do
+ARGON_ASSET="$BRAND_ASSETS/argon-grub-theme"
+[ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon precompilado" >&2; exit 1; }
+for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh dexos-audio-init dexos-apk-refresh dexos-language.py dexos-trust-launchers dexos-video-init; do
     [ -f "$SYSTEM_ASSETS/$f" ] || { echo "Falta recurso del sistema: $f" >&2; exit 1; }
 done
 tmp="$(mktemp -d)"
@@ -58,6 +60,12 @@ makefile root:root 0644 "$tmp/etc/hosts" <<EOF_HOSTS
 ::1 localhost localhost.localdomain $HOSTNAME
 EOF_HOSTS
 
+makefile root:root 0644 "$tmp/etc/apk/repositories" <<'EOF_APK_REPOS'
+https://dl-cdn.alpinelinux.org/alpine/edge/main
+https://dl-cdn.alpinelinux.org/alpine/edge/community
+@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing
+EOF_APK_REPOS
+
 makefile root:root 0644 "$tmp/etc/apk/world" <<'EOF_WORLD'
 alpine-base
 alpine-conf
@@ -87,6 +95,22 @@ xf86-video-qxl
 xf86-video-amdgpu
 mesa-dri-gallium
 mesa-gl
+mesa-va-gallium
+mesa-utils
+libva-utils
+intel-media-driver
+libva-intel-driver
+vulkan-loader
+mesa-vulkan-ati
+mesa-vulkan-intel
+libva-vdpau-driver
+libvdpau
+vdpauinfo
+ffmpeg
+gst-plugins-good
+gst-plugins-bad
+gst-plugins-ugly
+gst-libav
 xfce4
 xfce4-terminal
 xfce4-screensaver
@@ -104,7 +128,35 @@ font-dejavu
 font-noto
 adw-gtk3
 adwaita-xfce-icon-theme
+breeze-cursors
 xfce-polkit
+musl-locales
+musl-locales-lang
+gettext-lang
+libxfce4ui-lang
+libxfce4util-lang
+libxfce4windowing-lang
+xfce4-appfinder-lang
+xfce4-panel-lang
+xfce4-session-lang
+xfce4-settings-lang
+xfce4-terminal-lang
+thunar-lang
+xfdesktop-lang
+xfwm4-lang
+xfce4-power-manager-lang
+xfce4-pulseaudio-plugin-lang
+xfce4-notifyd-lang
+xfce4-screensaver-lang
+xfce4-whiskermenu-plugin-lang
+xfce4-taskmanager-lang
+xfce4-screenshooter-lang
+lightdm-lang
+lightdm-gtk-greeter-lang
+thunar-volman-lang
+garcon-lang
+exo-lang
+tumbler-lang
 gvfs
 udisks2
 thunar-volman
@@ -119,7 +171,12 @@ util-linux-misc
 wireless-tools
 wpa_supplicant
 wireless-regdb
+linux-firmware-amd
+linux-firmware-amdgpu
+linux-firmware-i915
+linux-firmware-xe
 linux-firmware-intel
+linux-firmware-nvidia
 linux-firmware-realtek
 linux-firmware-rtlwifi
 linux-firmware-rtw88
@@ -133,14 +190,13 @@ linux-firmware-ath12k
 linux-firmware-brcm
 linux-firmware-cypress
 linux-firmware-qca
-linux-firmware-qcom
-linux-firmware-mrvl
 linux-firmware-mwl8k
 linux-firmware-mwlwifi
 linux-firmware-libertas
 linux-firmware-ti-connectivity
 linux-firmware-rsi
 linux-firmware-wfx
+sof-firmware
 bluez
 bluez-openrc
 pipewire
@@ -148,6 +204,8 @@ pipewire-pulse
 pipewire-alsa
 wireplumber
 alsa-utils
+alsa-ucm-conf
+sof-firmware
 pavucontrol
 upower
 brightnessctl
@@ -160,6 +218,22 @@ grub-bios
 grub-efi
 syslinux
 parted
+gparted
+os-prober
+ntfs-3g
+ntfs-3g-progs
+exfatprogs
+btrfs-progs
+xfsprogs
+f2fs-tools
+nilfs-utils
+jfsutils
+udftools
+lvm2
+mdadm
+cryptsetup
+e2fsprogs-extra
+mtools
 pciutils
 usbutils
 tzdata
@@ -218,7 +292,7 @@ autologin-session=dexos
 EOF_LDM
 makefile root:root 0644 "$tmp/etc/lightdm/lightdm-gtk-greeter.conf" <<'EOF_GREETER'
 [greeter]
-background=/usr/share/dexos/wallpaper
+background=/usr/share/dexos/dexos-wallpaper.png
 theme-name=adw-gtk3-dark
 icon-theme-name=Adwaita-Xfce
 font-name=DejaVu Sans 11
@@ -227,10 +301,12 @@ indicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power
 user-background=false
 EOF_GREETER
 
-mkdir -p "$tmp/usr/share/dexos" "$tmp/usr/share/xsessions" "$tmp/usr/local/bin" "$tmp/usr/local/sbin" "$tmp/etc/init.d"
+mkdir -p "$tmp/usr/share/dexos" "$tmp/usr/share/xsessions" "$tmp/usr/local/bin" "$tmp/usr/local/sbin" "$tmp/etc/init.d" "$tmp/usr/share/backgrounds/xfce" "$tmp/usr/share/xfce4/backdrops"
 install -m 0644 "$BRAND_ASSETS/dexos-boot.jpg" "$tmp/usr/share/dexos/boot.jpg"
 install -m 0644 "$BRAND_ASSETS/dexos-boot.ppm" "$tmp/usr/share/dexos/boot.ppm"
-install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/dexos/wallpaper"
+install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/dexos/dexos-wallpaper.png"
+install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/backgrounds/xfce/DexOS.png"
+install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/xfce4/backdrops/DexOS.png"
 install -m 0755 "$SYSTEM_ASSETS/dexos-session-splash.py" "$tmp/usr/local/bin/dexos-session-splash"
 install -m 0755 "$SYSTEM_ASSETS/dexos-session" "$tmp/usr/local/bin/dexos-session"
 mkdir -p "$tmp/usr/share/dexos/installed"
@@ -241,6 +317,15 @@ install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/usr/share/dexos/installed
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/etc/init.d/dexos-wifi-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-refresh" "$tmp/usr/share/dexos/installed/dexos-wifi-refresh"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-refresh" "$tmp/etc/init.d/dexos-wifi-refresh"
+install -m 0755 "$SYSTEM_ASSETS/dexos-audio-init" "$tmp/usr/local/bin/dexos-audio-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-audio-init" "$tmp/usr/share/dexos/installed/dexos-audio-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-apk-refresh" "$tmp/usr/share/dexos/installed/dexos-apk-refresh"
+install -m 0755 "$SYSTEM_ASSETS/dexos-apk-refresh" "$tmp/etc/init.d/dexos-apk-refresh"
+install -m 0755 "$SYSTEM_ASSETS/dexos-language.py" "$tmp/usr/local/bin/dexos-language"
+install -m 0755 "$SYSTEM_ASSETS/dexos-language.py" "$tmp/usr/share/dexos/installed/dexos-language"
+install -m 0755 "$SYSTEM_ASSETS/dexos-trust-launchers" "$tmp/usr/local/bin/dexos-trust-launchers"
+install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/local/bin/dexos-video-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/share/dexos/installed/dexos-video-init"
 makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
 [Desktop Entry]
 Name=DexOS
@@ -254,7 +339,9 @@ EOF_DEXOS_SESSION
 # Xorg pinta rojo mate inmediatamente, antes de que XFCE termine su primer frame.
 makefile root:root 0755 "$tmp/usr/local/sbin/dexos-xsetup" <<'EOF_XSETUP'
 #!/bin/sh
-exec /usr/bin/xsetroot -solid '#6b2a2e'
+/usr/bin/xsetroot -solid '#6b2a2e' || true
+/usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
+exit 0
 EOF_XSETUP
 
 mkdir -p "$tmp/etc/skel/.config/gtk-3.0"
@@ -267,30 +354,114 @@ selection { background-color: #7a3438; color: #f7eeee; }
 *:selected { background-color: #7a3438; }
 EOF_GTKCSS
 
+mkdir -p "$tmp/etc/X11/xorg.conf.d"
+makefile root:root 0644 "$tmp/etc/X11/xorg.conf.d/40-dexos-libinput.conf" <<'EOF_LIBINPUT'
+Section "InputClass"
+    Identifier "DexOS mouse acceleration"
+    MatchIsPointer "on"
+    Driver "libinput"
+    Option "AccelProfile" "adaptive"
+    Option "AccelSpeed" "0.20"
+EndSection
+
+Section "InputClass"
+    Identifier "DexOS touchpad"
+    MatchIsTouchpad "on"
+    Driver "libinput"
+    Option "Tapping" "on"
+    Option "TappingButtonMap" "lrm"
+    Option "DisableWhileTyping" "on"
+    Option "ScrollMethod" "twofinger"
+    Option "AccelProfile" "adaptive"
+    Option "AccelSpeed" "0.20"
+EndSection
+EOF_LIBINPUT
+
 mkdir -p "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml" <<'EOF_XSET'
 <?xml version="1.0" encoding="UTF-8"?>
-<channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="adw-gtk3-dark"/><property name="IconThemeName" type="string" value="Adwaita-Xfce"/></property><property name="Gtk" type="empty"><property name="FontName" type="string" value="DejaVu Sans 10"/></property></channel>
+<channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="adw-gtk3-dark"/><property name="IconThemeName" type="string" value="Adwaita-Xfce"/><property name="CursorThemeName" type="string" value="Breeze"/><property name="CursorThemeSize" type="int" value="24"/></property><property name="Gtk" type="empty"><property name="FontName" type="string" value="DejaVu Sans 10"/></property></channel>
 EOF_XSET
+makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" <<'EOF_XFWM'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="use_compositing" type="bool" value="true"/>
+    <property name="vblank_mode" type="string" value="xpresent"/>
+  </property>
+</channel>
+EOF_XFWM
+makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml" <<'EOF_XFCE_PANEL'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-panel" version="1.0">
+  <property name="configver" type="int" value="2"/>
+  <property name="panels" type="array">
+    <value type="int" value="1"/>
+    <property name="dark-mode" type="bool" value="true"/>
+    <property name="panel-1" type="empty">
+      <property name="position" type="string" value="p=6;x=0;y=0"/>
+      <property name="length" type="uint" value="100"/>
+      <property name="position-locked" type="bool" value="true"/>
+      <property name="size" type="uint" value="34"/>
+      <property name="icon-size" type="uint" value="20"/>
+      <property name="plugin-ids" type="array">
+        <value type="int" value="1"/>
+        <value type="int" value="2"/>
+        <value type="int" value="3"/>
+        <value type="int" value="4"/>
+        <value type="int" value="5"/>
+        <value type="int" value="6"/>
+        <value type="int" value="7"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-1" type="string" value="whiskermenu"/>
+    <property name="plugin-2" type="string" value="tasklist">
+      <property name="grouping" type="uint" value="1"/>
+    </property>
+    <property name="plugin-3" type="string" value="separator">
+      <property name="expand" type="bool" value="true"/>
+      <property name="style" type="uint" value="0"/>
+    </property>
+    <property name="plugin-4" type="string" value="systray">
+      <property name="square-icons" type="bool" value="true"/>
+    </property>
+    <property name="plugin-5" type="string" value="pulseaudio">
+      <property name="volume-step" type="uint" value="5"/>
+      <property name="volume-max" type="uint" value="150"/>
+      <property name="mixer-command" type="string" value="pavucontrol"/>
+      <property name="enable-keyboard-shortcuts" type="bool" value="true"/>
+      <property name="enable-multimedia-keys" type="bool" value="true"/>
+      <property name="show-notifications" type="bool" value="true"/>
+    </property>
+    <property name="plugin-6" type="string" value="clock"/>
+    <property name="plugin-7" type="string" value="actions"/>
+  </property>
+</channel>
+EOF_XFCE_PANEL
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml" <<'EOF_DESKTOP_XFCE'
 <?xml version="1.0" encoding="UTF-8"?>
-<channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/dexos/wallpaper"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
+<channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/dexos/dexos-wallpaper.png"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
 EOF_DESKTOP_XFCE
 
 # Aplica la identidad DexOS al monitor real que XFCE detecte (VGA-1, Virtual-1, eDP-1, etc.).
 makefile root:root 0755 "$tmp/usr/local/bin/dexos-apply-theme" <<'EOF_APPLY_THEME'
 #!/bin/sh
-wall=/usr/share/dexos/wallpaper
+wall=/usr/share/dexos/dexos-wallpaper.png
 /usr/bin/xsetroot -solid '#6b2a2e' 2>/dev/null || true
+/usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
 
+# Wait until xfconf/xfdesktop are responsive, then update every property XFCE
+# already created and explicitly create one for each connected monitor.
 i=0
-while [ "$i" -lt 40 ]; do
-    props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
-    [ -n "$props" ] && break
+while [ "$i" -lt 80 ]; do
+    if pidof xfdesktop >/dev/null 2>&1 && xfconf-query -c xfce4-desktop -l >/dev/null 2>&1; then break; fi
     sleep 0.25
     i=$((i + 1))
 done
 
+props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
 printf '%s\n' "$props" | while IFS= read -r prop; do
     [ -n "$prop" ] || continue
     xfconf-query -c xfce4-desktop -p "$prop" -s "$wall" 2>/dev/null || true
@@ -299,12 +470,38 @@ printf '%s\n' "$props" | while IFS= read -r prop; do
     xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || true
 done
 
-# Reaplicar tema/acento después de que xfsettingsd esté activo.
+xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | while read -r mon; do
+    [ -n "$mon" ] || continue
+    base="/backdrop/screen0/monitor${mon}/workspace0"
+    xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$wall" 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/last-image" -s "$wall" 2>/dev/null || true
+    xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || true
+    xfconf-query -c xfce4-desktop -p "$base/color-style" -n -t int -s 0 2>/dev/null || \
+      xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || true
+done
+
 xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
 xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s Breeze 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 24 2>/dev/null || true
+xfdesktop --reload >/dev/null 2>&1 || true
 exit 0
 EOF_APPLY_THEME
 mkdir -p "$tmp/etc/xdg/autostart"
+makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-audio.desktop" <<'EOF_AUDIO_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=DexOS Audio
+Comment=Initialize laptop audio controls
+Exec=/usr/local/bin/dexos-audio-init
+OnlyShowIn=XFCE;
+Terminal=false
+StartupNotify=false
+NoDisplay=true
+X-GNOME-Autostart-Delay=2
+EOF_AUDIO_AUTOSTART
+
 makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-branding.desktop" <<'EOF_BRAND_AUTOSTART'
 [Desktop Entry]
 Type=Application
@@ -316,6 +513,29 @@ Terminal=false
 StartupNotify=false
 NoDisplay=true
 EOF_BRAND_AUTOSTART
+
+makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-trust-launchers.desktop" <<'EOF_TRUST_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=DexOS Launcher Trust
+Exec=/usr/local/bin/dexos-trust-launchers
+OnlyShowIn=XFCE;
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-Delay=2
+EOF_TRUST_AUTOSTART
+
+makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-video.desktop" <<'EOF_VIDEO_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=DexOS Video
+Comment=Enable compositor sync and hardware video acceleration diagnostics
+Exec=/usr/local/bin/dexos-video-init
+OnlyShowIn=XFCE;
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-Delay=1
+EOF_VIDEO_AUTOSTART
 
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml" <<'EOF_PWR'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -338,7 +558,10 @@ start(){
     # `su` without authentication. Installed systems keep the root password
     # explicitly chosen in the graphical installer.
     passwd -d root >/dev/null 2>&1 || true
-    mkdir -p /home/dexos/Desktop /home/dexos/.config/autostart
+    mkdir -p /home/dexos/Desktop /home/dexos/.config/autostart /home/dexos/.config/xfce4/xfconf/xfce-perchannel-xml
+    if [ -f /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml ]; then
+        cp -f /etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml /home/dexos/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
+    fi
     if [ -f /usr/share/applications/dexos-installer.desktop ]; then
         install -m 0755 /usr/share/applications/dexos-installer.desktop /home/dexos/Desktop/Instalar-DexOS.desktop
     fi
@@ -527,6 +750,8 @@ EOF_SU_WRAPPER
 install -m 0755 "$INSTALLER_ASSETS/dexos-installer.py" "$tmp/usr/local/bin/dexos-installer"
 install -m 0755 "$INSTALLER_ASSETS/dexos-installer-backend.py" "$tmp/usr/local/libexec/dexos-installer-backend"
 install -m 0644 "$INSTALLER_ASSETS/installer-packages.txt" "$tmp/usr/share/dexos/installer-packages.txt"
+mkdir -p "$tmp/usr/share/dexos/argon-grub-theme"
+cp -a "$ARGON_ASSET/." "$tmp/usr/share/dexos/argon-grub-theme/"
 makefile root:root 0644 "$tmp/usr/share/applications/dexos-installer.desktop" <<'EOF_DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -537,6 +762,7 @@ TryExec=/usr/local/bin/dexos-installer
 Icon=drive-harddisk
 Terminal=false
 StartupNotify=true
+X-GNOME-Autostart-enabled=true
 Categories=System;
 EOF_DESKTOP
 
@@ -560,6 +786,7 @@ rc_add elogind default
 rc_add dexos-wifi-init boot
 rc_add networkmanager default
 rc_add dexos-wifi-refresh default
+rc_add dexos-apk-refresh default
 rc_add chronyd default
 rc_add bluetooth default
 rc_add dexos-live-user default

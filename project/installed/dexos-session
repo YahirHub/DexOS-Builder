@@ -1,3 +1,19 @@
 #!/bin/sh
+# Locale must be chosen before XFCE starts so gettext-based components inherit it.
+export XCURSOR_THEME=Breeze
+export XCURSOR_SIZE=24
+/usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
+locale=$(/usr/local/bin/dexos-language 2>/tmp/dexos-language.log || printf '%s\n' 'es_ES.UTF-8')
+case "$locale" in
+  es_ES.UTF-8) language='es_ES:es' ;;
+  en_US.UTF-8) language='en_US:en' ;;
+  pt_BR.UTF-8) language='pt_BR:pt' ;;
+  fr_FR.UTF-8) language='fr_FR:fr' ;;
+  de_DE.UTF-8) language='de_DE:de' ;;
+  it_IT.UTF-8) language='it_IT:it' ;;
+  *) locale='es_ES.UTF-8'; language='es_ES:es' ;;
+esac
+export LANG="$locale" LC_MESSAGES="$locale" LANGUAGE="$language"
+export MOZ_X11_EGL=1
 /usr/local/bin/dexos-session-splash >/tmp/dexos-session-splash.log 2>&1 &
 exec startxfce4

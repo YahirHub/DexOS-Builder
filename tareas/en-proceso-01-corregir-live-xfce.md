@@ -99,3 +99,12 @@ Corregir la sesión Live XFCE congelada.
 - [x] Generar `DexOS-edge-x86_64-v002.iso`.
 - [x] Verificar dentro de la ISO kernel LTS, cmdline Ventoy/USB, firmware Live, `su`, kernel instalado y wallpaper exacto.
 - [ ] Validar v002 en Ventoy físico del usuario.
+
+## DexOS v005
+- [x] Forzar wallpaper DexOS en Live con rutas estándar XFCE.
+- [x] Copiar configuración de xfdesktop al usuario Live antes del primer login.
+- [x] Reaplicar wallpaper a todos los monitores detectados.
+- [x] Añadir cursor Breeze y mostrar cursor antes del selector de idioma.
+- [x] Forzar cursor GDK dentro del selector.
+- [x] Generar y verificar `DexOS-edge-x86_64-v005.iso`.
+- [ ] Validar visualmente v005 en VM/hardware físico.

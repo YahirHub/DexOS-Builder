@@ -9,8 +9,8 @@ BUILD_HOME="$ROOT/build-home"
 KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
-ISO="$OUT/DexOS-edge-x86_64-v002.iso"
-VOLID="DEXOS_V002"
+ISO="$OUT/DexOS-edge-x86_64-v005.iso"
+VOLID="DEXOS_V005"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
@@ -30,6 +30,8 @@ cp "$ROOT/project/installer/installer-packages.txt" "$APORTS/scripts/installer-p
 python3 "$ROOT/project/assets/generate-brand-assets.py"
 cp "$ROOT/project/assets/dexos-boot.jpg" "$APORTS/scripts/dexos-boot.jpg"
 cp "$ROOT/project/assets/dexos-boot.ppm" "$APORTS/scripts/dexos-boot.ppm"
+rm -rf "$APORTS/scripts/argon-grub-theme"
+cp -a "$ROOT/project/assets/argon-grub-theme" "$APORTS/scripts/argon-grub-theme"
 # Preserve the user's wallpaper bytes exactly. The filename is intentionally
 # extensionless because GTK/GdkPixbuf detects PNG/JPEG by file signature.
 USER_WALLPAPER=""
@@ -49,13 +51,24 @@ cp "$ROOT/project/installed/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash"
 cp "$ROOT/project/installed/dexos-bootsplash-finish" "$APORTS/scripts/dexos-bootsplash-finish"
 cp "$ROOT/project/installed/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-init"
 cp "$ROOT/project/installed/dexos-wifi-refresh" "$APORTS/scripts/dexos-wifi-refresh"
-chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-refresh"
+cp "$ROOT/project/installed/dexos-audio-init" "$APORTS/scripts/dexos-audio-init"
+cp "$ROOT/project/installed/dexos-apk-refresh" "$APORTS/scripts/dexos-apk-refresh"
+cp "$ROOT/project/installed/dexos-language.py" "$APORTS/scripts/dexos-language.py"
+cp "$ROOT/project/installed/dexos-trust-launchers" "$APORTS/scripts/dexos-trust-launchers"
+cp "$ROOT/project/installed/dexos-video-init" "$APORTS/scripts/dexos-video-init"
+chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-refresh" "$APORTS/scripts/dexos-audio-init" "$APORTS/scripts/dexos-apk-refresh" "$APORTS/scripts/dexos-language.py" "$APORTS/scripts/dexos-trust-launchers" "$APORTS/scripts/dexos-video-init"
 
 python3 - "$APORTS/scripts/mkimage.sh" "$APORTS/scripts/mkimg.base.sh" <<'PY'
 from pathlib import Path
 import sys
-mk=Path(sys.argv[1]); s=mk.read_text(); s=s.replace('cp -Lrs $_fn $DESTDIR/', 'cp -Lr $_fn $DESTDIR/'); mk.write_text(s)
-base=Path(sys.argv[2]); b=base.read_text(); needle='\tif [ "$ARCH" = ppc64le ]; then\n'; marker='\t[ "${YAH_SKIP_XORRISO:-}" = "1" ] && return 0\n\n'
+mk=Path(sys.argv[1]); s=mk.read_text(); s=s.replace('cp -Lrs $_fn $DESTDIR/', 'cp -Lr $_fn $DESTDIR/')
+needle='\tlocal _dir="${args//[^a-zA-Z0-9]/_}"\n'
+short='\tlocal _dir="${args//[^a-zA-Z0-9]/_}"\n\tif [ ${#_dir} -gt 180 ]; then _dir="${section}_$(printf %s "$args" | sha1sum | cut -c1-40)"; fi\n'
+if short not in s:
+    if needle not in s: raise SystemExit('build_section _dir anchor missing')
+    s=s.replace(needle, short, 1)
+mk.write_text(s)
+base=Path(sys.argv[2]); b=base.read_text(); b=b.replace('_pkgs="linux-$_f linux-firmware wireless-regdb $modloop_addons"', '_pkgs="linux-$_f ${kernel_firmware_packages:-linux-firmware} wireless-regdb $modloop_addons"'); needle='\tif [ "$ARCH" = ppc64le ]; then\n'; marker='\t[ "${YAH_SKIP_XORRISO:-}" = "1" ] && return 0\n\n'
 if 'YAH_SKIP_XORRISO' not in b:
     idx=b.find(needle,b.find('create_image_iso()'))
     if idx<0: raise SystemExit('create_image_iso insertion point not found')
@@ -73,15 +86,19 @@ sh -n "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
 
 python3 - "$ALPINE_ROOT/usr/sbin/update-kernel" <<'PY'
 from pathlib import Path
-import re,sys
-p=Path(sys.argv[1]); s=p.read_text()
-s=re.sub(r'mksquashfs \$MODLOOP "\$STAGING/\$MODIMG" \$MKSQUASHFS_OPTS -comp (?:xz|zstd)(?: -Xcompression-level 15)? -exit-on-error(?: \$mksfs)?','mksquashfs $MODLOOP "$STAGING/$MODIMG" $MKSQUASHFS_OPTS -comp zstd -Xcompression-level 15 -exit-on-error',s)
-p.write_text(s)
+import sys
+p=Path(sys.argv[1]); lines=p.read_text().splitlines()
+out=[]
+for line in lines:
+    if line.lstrip().startswith('mksquashfs $MODLOOP "$STAGING/$MODIMG"'):
+        line='mksquashfs $MODLOOP "$STAGING/$MODIMG" $MKSQUASHFS_OPTS -comp xz -b 1M -Xbcj x86 -Xdict-size 100% -exit-on-error'
+    out.append(line)
+p.write_text('\n'.join(out)+'\n')
 PY
-PATCH_HASH="$(sha256sum "$ROOT/project/mkimage/patch-initramfs-init.py" | awk '{print $1}')"
+PATCH_HASH="$(cat "$ROOT/project/mkimage/patch-initramfs-init.py" "$ROOT/project/mkimage/mkimg.yahxfce.sh" "$ROOT/project/build-yah-iso.sh" | sha256sum | awk '{print $1}')"
 PATCH_STAMP="$CACHE/.dexos-initramfs-patch.sha256"
 if [[ ! -f "$PATCH_STAMP" ]] || [[ "$(cat "$PATCH_STAMP" 2>/dev/null || true)" != "$PATCH_HASH" ]]; then
-  rm -rf "$CACHE"/kernel_x86_64_lts_*
+  rm -rf "$CACHE"/kernel_*
   printf '%s\n' "$PATCH_HASH" > "$PATCH_STAMP"
 fi
 rm -rf "$CACHE"/apkovl_* "$CACHE"/image-*-x86_64-yahxfce "$ISO" "$ISO.sha256" "$ISO.sha512"

@@ -132,3 +132,13 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - El sistema instalado también vuelve a `linux-lts`.
 - Nueva ISO: `DexOS-edge-x86_64-v002.iso`.
 - SHA-256: `f793ab1c0f21dc1521a8400f167d9df993ed0ed4cc7ae1773338b9f6902bc194`.
+
+## DexOS v005: wallpaper Live y cursor del selector de idioma
+- Se corrigió el wallpaper del Live para evitar que XFCE vuelva a su fondo predeterminado.
+- El wallpaper exacto se instala con extensión PNG en `/usr/share/dexos/dexos-wallpaper.png`, `/usr/share/backgrounds/xfce/DexOS.png` y `/usr/share/xfce4/backdrops/DexOS.png` conservando bytes exactos.
+- El usuario Live recibe una copia directa de `xfce4-desktop.xml` en su configuración antes del primer inicio de sesión.
+- `dexos-apply-theme` crea/actualiza propiedades para cada monitor conectado detectado por `xrandr` y recarga `xfdesktop`.
+- Se añadió `breeze-cursors`; LightDM/Xorg fija `left_ptr` y la sesión exporta `XCURSOR_THEME=Breeze`, `XCURSOR_SIZE=24` antes del selector de idioma.
+- El selector GTK también fuerza explícitamente un cursor visible mediante GDK.
+- ISO v005: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v005.iso`.
+- SHA-256: `20f81f30a90d5b5a5cef84f69d3f7aef37f5096a4bd185911a87153b6f6354cc`.
