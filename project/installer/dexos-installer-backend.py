@@ -414,7 +414,9 @@ def configure_branding():
     progress(0.70, 'Aplicando identidad DexOS')
     copy_if('/usr/share/dexos/boot.jpg', TARGET / 'usr/share/dexos/boot.jpg')
     copy_if('/usr/share/dexos/boot.ppm', TARGET / 'usr/share/dexos/boot.ppm')
-    copy_if('/usr/share/dexos/wallpaper', TARGET / 'usr/share/dexos/wallpaper.jpg')
+    copy_if('/usr/share/dexos/dexos-wallpaper.png', TARGET / 'usr/share/dexos/dexos-wallpaper.png')
+    copy_if('/usr/share/backgrounds/xfce/DexOS.png', TARGET / 'usr/share/backgrounds/xfce/DexOS.png')
+    copy_if('/usr/share/xfce4/backdrops/DexOS.png', TARGET / 'usr/share/xfce4/backdrops/DexOS.png')
     copy_if('/usr/local/bin/dexos-session', TARGET / 'usr/local/bin/dexos-session', 0o755)
     copy_if('/usr/local/bin/dexos-session-splash', TARGET / 'usr/local/bin/dexos-session-splash', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-language', TARGET / 'usr/local/bin/dexos-language', 0o755)
@@ -426,6 +428,7 @@ def configure_branding():
     copy_if('/usr/share/dexos/installed/dexos-audio-init', TARGET / 'usr/local/bin/dexos-audio-init', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-video-init', TARGET / 'usr/local/bin/dexos-video-init', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-apk-refresh', TARGET / 'etc/init.d/dexos-apk-refresh', 0o755)
+    copy_if('/usr/share/dexos/installed/patch-initramfs-init.py', TARGET / 'usr/share/dexos/patch-initramfs-init.py', 0o755)
     copy_if('/usr/local/sbin/dexos-xsetup', TARGET / 'usr/local/sbin/dexos-xsetup', 0o755)
     copy_if('/usr/local/bin/dexos-apply-theme', TARGET / 'usr/local/bin/dexos-apply-theme', 0o755)
     copy_if('/etc/xdg/autostart/dexos-branding.desktop', TARGET / 'etc/xdg/autostart/dexos-branding.desktop')
@@ -434,10 +437,11 @@ def configure_branding():
     copy_if('/etc/X11/xorg.conf.d/40-dexos-libinput.conf', TARGET / 'etc/X11/xorg.conf.d/40-dexos-libinput.conf')
     copy_if('/etc/xdg/xfce4/xfconf/xfce-perchannel-xml', TARGET / 'etc/xdg/xfce4/xfconf/xfce-perchannel-xml')
     copy_if('/etc/skel/.config/gtk-3.0', TARGET / 'etc/skel/.config/gtk-3.0')
+    copy_if('/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml', TARGET / 'etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml')
     write(TARGET / 'etc/os-release', '''NAME="DexOS"\nPRETTY_NAME="DexOS"\nID=dexos\nID_LIKE=alpine\nVERSION_ID="0.3"\nVERSION="0.3"\n''')
     write(TARGET / 'etc/issue', 'DexOS \\n \\l\n')
     write(TARGET / 'etc/lightdm/lightdm.conf.d/10-dexos.conf', '''[LightDM]\nlogind-check-graphical=false\n\n[Seat:*]\ndisplay-setup-script=/usr/local/sbin/dexos-xsetup\ngreeter-session=lightdm-gtk-greeter\nuser-session=dexos\n''')
-    write(TARGET / 'etc/lightdm/lightdm-gtk-greeter.conf', '''[greeter]\nbackground=/usr/share/dexos/dexos-wallpaper.png\ntheme-name=adw-gtk3-dark\nicon-theme-name=Adwaita-Xfce\nfont-name=DejaVu Sans 11\nclock-format=%A %d de %B  %H:%M\nindicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power\nuser-background=false\n''')
+    write(TARGET / 'etc/lightdm/lightdm-gtk-greeter.conf', '''[greeter]\nbackground=/usr/share/dexos/dexos-wallpaper.png\ntheme-name=adw-gtk3-dark\nicon-theme-name=Adwaita-Xfce\ncursor-theme-name=Breeze\ncursor-theme-size=24\nfont-name=DejaVu Sans 11\nclock-format=%A %d de %B  %H:%M\nindicators=~host;~spacer;~clock;~spacer;~session;~a11y;~power\nuser-background=false\n''')
     write(TARGET / 'etc/doas.d/20-dexos.conf', 'permit :wheel\n', 0o600)
     write(TARGET / 'etc/sudoers.d/10-wheel', '%wheel ALL=(ALL:ALL) ALL\n', 0o440)
     write(TARGET / 'etc/conf.d/networkmanager', 'rc_need="dexos-wifi-init"\n')
@@ -484,6 +488,7 @@ def configure_system(cfg, efi_partition, root_partition):
 
     home = TARGET / 'home' / cfg['username']
     copy_if(TARGET / 'etc/skel/.config', home / '.config')
+    copy_if(TARGET / 'etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml', home / '.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml')
     chroot(['/bin/chown', '-R', f"{cfg['username']}:{cfg['username']}", f"/home/{cfg['username']}"])
 
     root_uuid = output(['blkid', '-s', 'UUID', '-o', 'value', root_partition])
@@ -495,7 +500,10 @@ def configure_system(cfg, efi_partition, root_partition):
     init_script = TARGET / 'usr/share/mkinitfs/initramfs-init'
     if not init_script.is_file():
         raise InstallError('Falta initramfs-init en el sistema destino.')
-    init_script.write_text(patch_installed_initramfs(init_script.read_text()))
+    patcher = TARGET / 'usr/share/dexos/patch-initramfs-init.py'
+    if not patcher.is_file():
+        raise InstallError('Falta el parche DexOS de bootsplash en el sistema destino.')
+    run(['/usr/bin/python3', str(patcher), str(init_script)])
     write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme dexosroot"\n')
 
     for service, level in [
@@ -541,7 +549,7 @@ def rewrite_grub_root(text, root_uuid):
             line = re.sub(r'\s+root=\S+', '', line)
             line = re.sub(r'\s+rootfstype=\S+', '', line)
             line = re.sub(r'\s+modules=\S+', '', line)
-            line += f' root=UUID={root_uuid} quiet splash rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4'
+            line += f' root=UUID={root_uuid} quiet splash vt.global_cursor_default=0 rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4'
         fixed.append(line)
     return '\n'.join(fixed) + '\n'
 
@@ -584,7 +592,7 @@ def install_bootloader(boot_disk, root_uuid, *, preserve_efi=False):
         shutil.copy2(efi, fallback)
 
     install_argon_theme()
-    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=8\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_DISABLE_OS_PROBER=false\nGRUB_THEME="/boot/grub/themes/argon/theme.txt"\nGRUB_GFXMODE="1920x1080,auto"\nGRUB_CMDLINE_LINUX_DEFAULT="quiet splash rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
+    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=8\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_DISABLE_OS_PROBER=false\nGRUB_THEME="/boot/grub/themes/argon/theme.txt"\nGRUB_GFXMODE="1920x1080,auto"\nGRUB_GFXPAYLOAD_LINUX=keep\nGRUB_CMDLINE_LINUX_DEFAULT="quiet splash vt.global_cursor_default=0 rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
     # os-prober is intentionally enabled only during explicit OS installation.
     chroot(['/usr/bin/os-prober'], check=False)
     chroot(['/usr/sbin/grub-mkconfig', '-o', '/boot/grub/grub.cfg'])

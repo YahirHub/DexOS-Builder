@@ -411,7 +411,22 @@ class Installer(Gtk.Assistant):
         self.progress.set_fraction(float(msg.get('value', 0))); self.progress.set_text(msg.get('message', '')); return False
 
     def done(self, message):
-        self.installing = False; self.finish_label.set_text(message); self.set_page_complete(self.progress_page, True); self.set_current_page(self.get_n_pages() - 1); return False
+        self.installing = False
+        final = 'DexOS se instaló correctamente. Debes reiniciar el equipo para iniciar DexOS desde el disco instalado. Retira el medio Live al reiniciar.'
+        self.finish_label.set_text(final)
+        self.set_page_complete(self.progress_page, True)
+        self.set_current_page(self.get_n_pages() - 1)
+        dlg = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.INFO,
+                                buttons=Gtk.ButtonsType.NONE, text='Instalación de DexOS completada')
+        dlg.format_secondary_text(final)
+        dlg.add_button('Más tarde', Gtk.ResponseType.CLOSE)
+        dlg.add_button('Reiniciar ahora', Gtk.ResponseType.OK)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        response = dlg.run(); dlg.destroy()
+        if response == Gtk.ResponseType.OK:
+            try: subprocess.Popen(['doas', 'reboot'])
+            except Exception as e: self.error_dialog('No se pudo reiniciar', str(e))
+        return False
 
     def error_dialog(self, title, message):
         dlg = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.CLOSE, text=title)

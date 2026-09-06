@@ -127,4 +127,19 @@ assert "TARGET / 'usr/local/bin/dexos-video-init'" in backend_text
 assert "TARGET / 'usr/local/bin/dexos-language'" in backend_text
 assert "'locale': os.environ.get('LANG'" in ui
 
+
+# v006 installed branding / full splash integration.
+assert "'/usr/share/dexos/dexos-wallpaper.png'" in backend_text
+assert "TARGET / 'usr/share/dexos/dexos-wallpaper.png'" in backend_text
+assert "TARGET / 'usr/share/backgrounds/xfce/DexOS.png'" in backend_text
+assert "TARGET / 'usr/share/xfce4/backdrops/DexOS.png'" in backend_text
+assert "TARGET / 'etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml'" in backend_text
+assert "patch-initramfs-init.py" in backend_text
+assert 'GRUB_GFXPAYLOAD_LINUX=keep' in backend_text
+assert 'vt.global_cursor_default=0' in backend_text
+assert '~language' not in backend_text
+assert "Reiniciar ahora" in ui
+assert "doas', 'reboot'" in ui
+assert "/usr/share/dexos/wallpaper'" not in backend_text
+
 print('test-installer: OK')

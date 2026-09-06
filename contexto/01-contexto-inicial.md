@@ -142,3 +142,15 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - El selector GTK también fuerza explícitamente un cursor visible mediante GDK.
 - ISO v005: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v005.iso`.
 - SHA-256: `20f81f30a90d5b5a5cef84f69d3f7aef37f5096a4bd185911a87153b6f6354cc`.
+
+## DexOS v006: branding instalado, splash y flujo final del instalador
+- Se corrigió la persistencia del branding desde el Live al sistema instalado: wallpaper DexOS en `/usr/share/dexos/dexos-wallpaper.png`, `/usr/share/backgrounds/xfce/DexOS.png` y `/usr/share/xfce4/backdrops/DexOS.png`.
+- LightDM instalado usa explícitamente el wallpaper DexOS, tema oscuro, cursor Breeze y `user-background=false`.
+- El usuario instalado recibe `xfce4-desktop.xml` en su HOME para evitar que XFCE vuelva al fondo predeterminado en el primer login.
+- La sesión DexOS lanza `dexos-apply-theme` directamente antes de XFCE como waiter, además de la entrada XDG autostart.
+- El lanzador del instalador usa el mecanismo de confianza de XFCE mediante `metadata::xfce-exe-checksum` con SHA-256, no sólo chmod/metadata::trusted.
+- El instalador muestra al finalizar un diálogo con `Reiniciar ahora` / `Más tarde`.
+- El sistema instalado copia y aplica el parche DexOS de initramfs, incluye `boot.ppm`, habilita `dexos-bootsplash` y oculta cursor de consola con `vt.global_cursor_default=0`.
+- ISO v006: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v006.iso`.
+- SHA-256: `748cb713d130b3ae158476e68e15839d73cb99d1ea447e6f76863ce4b9d214c2`.
+- VM de prueba reiniciada con QCOW totalmente nuevo de 24 GiB: `/workspace/yah-alpine/runtime/dexos-v006-clean.qcow2`.

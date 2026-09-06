@@ -295,9 +295,11 @@ makefile root:root 0644 "$tmp/etc/lightdm/lightdm-gtk-greeter.conf" <<'EOF_GREET
 background=/usr/share/dexos/dexos-wallpaper.png
 theme-name=adw-gtk3-dark
 icon-theme-name=Adwaita-Xfce
+cursor-theme-name=Breeze
+cursor-theme-size=24
 font-name=DejaVu Sans 11
 clock-format=%A %d de %B  %H:%M
-indicators=~host;~spacer;~clock;~spacer;~session;~language;~a11y;~power
+indicators=~host;~spacer;~clock;~spacer;~session;~a11y;~power
 user-background=false
 EOF_GREETER
 
@@ -326,6 +328,7 @@ install -m 0755 "$SYSTEM_ASSETS/dexos-language.py" "$tmp/usr/share/dexos/install
 install -m 0755 "$SYSTEM_ASSETS/dexos-trust-launchers" "$tmp/usr/local/bin/dexos-trust-launchers"
 install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/local/bin/dexos-video-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/share/dexos/installed/dexos-video-init"
+install -m 0755 "$SCRIPT_DIR/patch-initramfs-init.py" "$tmp/usr/share/dexos/installed/patch-initramfs-init.py"
 makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
 [Desktop Entry]
 Name=DexOS

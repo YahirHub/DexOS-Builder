@@ -182,7 +182,8 @@ for p in exfatprogs btrfs-progs xfsprogs f2fs-tools nilfs-utils jfsutils udftool
 
 # v004 trusted desktop installer launcher.
 test -x rootfs/usr/local/bin/dexos-trust-launchers
-grep -q 'metadata::trusted true' rootfs/usr/local/bin/dexos-trust-launchers
+grep -q 'metadata::xfce-exe-checksum' rootfs/usr/local/bin/dexos-trust-launchers
+grep -q 'sha256sum' rootfs/usr/local/bin/dexos-trust-launchers
 test -f rootfs/etc/xdg/autostart/dexos-trust-launchers.desktop
 grep -q 'install -m 0755 /usr/share/applications/dexos-installer.desktop' rootfs/etc/init.d/dexos-live-user
 
@@ -212,5 +213,13 @@ grep -q 'xfdesktop --reload' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'xfce-perchannel-xml/xfce4-desktop.xml' rootfs/etc/init.d/dexos-live-user
 grep -q 'export XCURSOR_THEME=Breeze' rootfs/usr/local/bin/dexos-session
 grep -q 'Gdk.Cursor.new_from_name' rootfs/usr/local/bin/dexos-language
+
+
+# v006: branding and installer trust are applied independent of XDG autostart.
+grep -q '/usr/local/bin/dexos-apply-theme' rootfs/usr/local/bin/dexos-session
+grep -q '/usr/local/bin/dexos-trust-launchers' rootfs/usr/local/bin/dexos-session
+test -x rootfs/usr/share/dexos/installed/patch-initramfs-init.py
+grep -q '^cursor-theme-name=Breeze$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
+! grep -q '~language' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 
 echo 'test-config: OK'

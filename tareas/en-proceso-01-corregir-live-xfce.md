@@ -108,3 +108,14 @@ Corregir la sesión Live XFCE congelada.
 - [x] Forzar cursor GDK dentro del selector.
 - [x] Generar y verificar `DexOS-edge-x86_64-v005.iso`.
 - [ ] Validar visualmente v005 en VM/hardware físico.
+
+## DexOS v006
+- [x] Copiar wallpaper/branding al sistema instalado y al usuario creado.
+- [x] Personalizar LightDM del sistema instalado con wallpaper DexOS.
+- [x] Reaplicar tema DexOS al iniciar sesión sin depender sólo de XDG autostart.
+- [x] Corregir confianza del lanzador con `metadata::xfce-exe-checksum`.
+- [x] Añadir diálogo final de instalación con opción de reinicio.
+- [x] Integrar bootsplash en el initramfs del sistema instalado.
+- [x] Generar y verificar `DexOS-edge-x86_64-v006.iso`.
+- [x] Reiniciar VM con QCOW limpio para prueba desde cero.
+- [ ] Validar visualmente el Live, instalar v006 en el QCOW limpio y verificar splash, LightDM y wallpaper del sistema instalado.
