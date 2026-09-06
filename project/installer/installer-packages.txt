@@ -1,6 +1,6 @@
 alpine-base alpine-conf doas sudo bash shadow python3 py3-gobject3
 ca-certificates tzdata curl chrony chrony-openrc firefox
-linux-lts linux-firmware wireless-regdb
+linux-stable linux-firmware wireless-regdb
 sfdisk util-linux dosfstools e2fsprogs parted efibootmgr
 grub grub-bios grub-efi
 dbus dbus-x11 dbus-openrc

@@ -119,6 +119,28 @@ util-linux-misc
 wireless-tools
 wpa_supplicant
 wireless-regdb
+linux-firmware-intel
+linux-firmware-realtek
+linux-firmware-rtlwifi
+linux-firmware-rtw88
+linux-firmware-rtw89
+linux-firmware-mediatek
+linux-firmware-ath6k
+linux-firmware-ath9k_htc
+linux-firmware-ath10k
+linux-firmware-ath11k
+linux-firmware-ath12k
+linux-firmware-brcm
+linux-firmware-cypress
+linux-firmware-qca
+linux-firmware-qcom
+linux-firmware-mrvl
+linux-firmware-mwl8k
+linux-firmware-mwlwifi
+linux-firmware-libertas
+linux-firmware-ti-connectivity
+linux-firmware-rsi
+linux-firmware-wfx
 bluez
 bluez-openrc
 pipewire
@@ -299,15 +321,6 @@ makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-pow
 <?xml version="1.0" encoding="UTF-8"?>
 <channel name="xfce4-power-manager" version="1.0"><property name="xfce4-power-manager" type="empty"><property name="show-tray-icon" type="int" value="1"/><property name="brightness-switch" type="int" value="1"/><property name="handle-brightness-keys" type="bool" value="true"/><property name="general-notification" type="bool" value="true"/></property></channel>
 EOF_PWR
-
-makefile root:root 0644 "$tmp/etc/pam.d/su" <<'EOF_SU_PAM'
-# DexOS Live: members of wheel (the dexos Live account) may become root
-# without a password. Other callers still require the target password.
-auth       sufficient   pam_wheel.so trust use_uid group=wheel
-auth       required     pam_unix.so
-account    required     pam_unix.so
-session    required     pam_unix.so
-EOF_SU_PAM
 
 # Crea el usuario live antes de LightDM.
 makefile root:root 0755 "$tmp/etc/init.d/dexos-live-user" <<'EOF_USER'
@@ -498,9 +511,19 @@ EOF_LIGHTDM_INIT
 
 # Sólo el backend validado puede elevarse. La interfaz GTK siempre corre como usuario Live.
 makefile root:root 0600 "$tmp/etc/doas.d/20-dexos-live.conf" <<'EOF_DOAS'
-permit nopass dexos as root cmd /usr/local/libexec/dexos-installer-backend
+# Live environment only: dexos may become root without a password.
+permit nopass dexos as root
 EOF_DOAS
 mkdir -p "$tmp/usr/local/bin" "$tmp/usr/local/libexec" "$tmp/usr/share/dexos" "$tmp/usr/share/applications"
+makefile root:root 0755 "$tmp/usr/local/bin/su" <<'EOF_SU_WRAPPER'
+#!/bin/sh
+# BusyBox su does not honor PAM on Alpine. For the DexOS Live account, use
+# doas directly so `su` always opens a root shell without prompting.
+if [ "$(id -un 2>/dev/null || true)" = "dexos" ]; then
+    exec /usr/bin/doas /bin/bash -l
+fi
+exec /bin/busybox su "$@"
+EOF_SU_WRAPPER
 install -m 0755 "$INSTALLER_ASSETS/dexos-installer.py" "$tmp/usr/local/bin/dexos-installer"
 install -m 0755 "$INSTALLER_ASSETS/dexos-installer-backend.py" "$tmp/usr/local/libexec/dexos-installer-backend"
 install -m 0644 "$INSTALLER_ASSETS/installer-packages.txt" "$tmp/usr/share/dexos/installer-packages.txt"

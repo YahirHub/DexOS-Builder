@@ -113,3 +113,13 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - NetworkManager declara dependencia explícita `rc_need="dexos-wifi-init"`.
 - Se genera `/var/log/dexos-wifi.log` con rfkill, iw, interfaces, PCI, USB y mensajes de kernel/firmware para diagnóstico en hardware real.
 - ISO resultante SHA-256: `965ffdf11335de11517e23bd7e43de0a1be60e17e5e17ce8d1c986967c006656`.
+
+## DexOS v001: SU Live robusto + firmware Wi-Fi real + kernel stable
+- El `su` anterior fallaba porque Alpine Live resolvía `su` mediante BusyBox, que no usa la configuración PAM añadida.
+- Se añadió `/usr/local/bin/su` sólo al Live. Para el usuario `dexos`, ejecuta `doas /bin/bash -l`; `/etc/doas.d/20-dexos-live.conf` permite `permit nopass dexos as root` sólo en el Live.
+- Se detectó que el repositorio ISO contenía paquetes `linux-firmware-*`, pero `/etc/apk/world` del Live no los solicitaba, por lo que el Live podía arrancar drivers sin instalar los blobs de firmware.
+- El Live ahora instala explícitamente firmware Wi-Fi para Intel, Realtek/rtlwifi/rtw88/rtw89, MediaTek, Atheros ath6k/9k_htc/10k/11k/12k, Broadcom/Cypress, Qualcomm, Marvell, TI, RSI y WFX.
+- Live e instalado migraron de `linux-lts` a `linux-stable` (7.1.5 en el build actual) para ampliar soporte de hardware nuevo.
+- Se deshabilitó el addon opcional `xtables-addons` para el flavor stable porque Alpine edge no publica `xtables-addons-stable`.
+- La ISO se versiona como `DexOS-edge-x86_64-v001.iso`, volumen `DEXOS_V001`.
+- SHA-256 v001: `d880a1ee05d2212567554096533f39d56f1ab0dba09446fff51f39219075de24`.

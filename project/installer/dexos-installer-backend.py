@@ -287,7 +287,7 @@ def configure_system(cfg, p2, p3):
     if missing:
         raise InstallError('Faltan módulos críticos del kernel: ' + ', '.join(missing))
     chroot(['/sbin/mkinitfs', '-c', '/etc/mkinitfs/mkinitfs.conf', kver])
-    initramfs = TARGET / 'boot/initramfs-lts'
+    initramfs = TARGET / 'boot/initramfs-stable'
     if not initramfs.is_file() or initramfs.stat().st_size < 1024 * 1024:
         raise InstallError('mkinitfs no generó un initramfs válido.')
 

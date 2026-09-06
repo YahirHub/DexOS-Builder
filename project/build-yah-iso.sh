@@ -9,8 +9,8 @@ BUILD_HOME="$ROOT/build-home"
 KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
-ISO="$OUT/DexOS-edge-x86_64.iso"
-VOLID="alpine-dexos edge x86_64"
+ISO="$OUT/DexOS-edge-x86_64-v001.iso"
+VOLID="DEXOS_V001"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
@@ -81,7 +81,7 @@ PY
 PATCH_HASH="$(sha256sum "$ROOT/project/mkimage/patch-initramfs-init.py" | awk '{print $1}')"
 PATCH_STAMP="$CACHE/.dexos-initramfs-patch.sha256"
 if [[ ! -f "$PATCH_STAMP" ]] || [[ "$(cat "$PATCH_STAMP" 2>/dev/null || true)" != "$PATCH_HASH" ]]; then
-  rm -rf "$CACHE"/kernel_x86_64_lts_*
+  rm -rf "$CACHE"/kernel_x86_64_stable_*
   printf '%s\n' "$PATCH_HASH" > "$PATCH_STAMP"
 fi
 rm -rf "$CACHE"/apkovl_* "$CACHE"/image-*-x86_64-yahxfce "$ISO" "$ISO.sha256" "$ISO.sha512"
@@ -93,8 +93,8 @@ IMG="$(find "$CACHE" -maxdepth 1 -type d -name 'image-*-x86_64-yahxfce' -print |
 [[ -n "$IMG" && -f "$IMG/boot/grub/efi.img" && -f "$IMG/boot/syslinux/isolinux.bin" ]]
 cp "$ROOT/project/assets/dexos-boot.ppm" "$IMG/fbsplash.ppm"
 # User-visible boot menu branding.
-sed -i 's/menuentry "Linux lts"/menuentry "DexOS Live"/g' "$IMG/boot/grub/grub.cfg"
-sed -i 's/MENU LABEL Linux lts/MENU LABEL DexOS Live/g' "$IMG/boot/syslinux/syslinux.cfg"
+sed -i -E 's/menuentry "Linux (lts|stable)"/menuentry "DexOS Live"/g' "$IMG/boot/grub/grub.cfg"
+sed -i -E 's/MENU LABEL Linux (lts|stable)/MENU LABEL DexOS Live/g' "$IMG/boot/syslinux/syslinux.cfg"
 grep -q ' splash' "$IMG/boot/grub/grub.cfg"
 grep -q ' splash' "$IMG/boot/syslinux/syslinux.cfg"
 xorrisofs -output "$ISO" -full-iso9660-filenames -joliet -rational-rock -sysid LINUX -volid "$VOLID" \

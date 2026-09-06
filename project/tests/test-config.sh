@@ -25,6 +25,7 @@ grep -q '^logind-check-graphical=false$' rootfs/etc/lightdm/lightdm.conf.d/10-de
 grep -q 'before lightdm' rootfs/etc/init.d/dexos-live-user
 grep -qx 'xf86-input-libinput' rootfs/etc/apk/world
 grep -qx 'eudev' rootfs/etc/apk/world
+for fw in linux-firmware-intel linux-firmware-realtek linux-firmware-mediatek linux-firmware-ath10k linux-firmware-ath11k linux-firmware-brcm linux-firmware-qcom; do grep -qx "$fw" rootfs/etc/apk/world; done
 
 test -L rootfs/etc/runlevels/boot/dexos-splash-keys
 grep -q 'need localmount dbus elogind networkmanager dexos-live-user' rootfs/etc/init.d/lightdm
@@ -46,7 +47,7 @@ grep -q '\[ "\$i" -lt 720 \]' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q '^Exec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
 grep -q '^TryExec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
 grep -q '^Terminal=false$' rootfs/usr/share/applications/dexos-installer.desktop
-grep -q '^permit nopass dexos as root cmd /usr/local/libexec/dexos-installer-backend$' rootfs/etc/doas.d/20-dexos-live.conf
+grep -q '^permit nopass dexos as root$' rootfs/etc/doas.d/20-dexos-live.conf
 test -x rootfs/usr/local/bin/dexos-installer
 test -x rootfs/usr/local/libexec/dexos-installer-backend
 test -s rootfs/usr/share/dexos/installer-packages.txt
@@ -79,7 +80,9 @@ test ! -e rootfs/etc/runlevels/boot/hwclock
 test -L rootfs/etc/runlevels/default/chronyd
 grep -q 'adduser -D -h /home/dexos -s /bin/bash dexos' rootfs/etc/init.d/dexos-live-user
 grep -q 'passwd -d root' rootfs/etc/init.d/dexos-live-user
-grep -q 'pam_wheel.so trust use_uid group=wheel' rootfs/etc/pam.d/su
+test -x rootfs/usr/local/bin/su
+grep -q 'exec /usr/bin/doas /bin/bash -l' rootfs/usr/local/bin/su
+grep -q '^permit nopass dexos as root$' rootfs/etc/doas.d/20-dexos-live.conf
 grep -q '^user-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^autologin-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^background=/usr/share/dexos/wallpaper$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf

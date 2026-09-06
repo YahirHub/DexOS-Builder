@@ -82,3 +82,12 @@ Corregir la sesión Live XFCE congelada.
 - [x] Añadir refresco Wi-Fi después de NetworkManager.
 - [x] Añadir log de diagnóstico `/var/log/dexos-wifi.log`.
 - [ ] Validar en hardware físico el chipset Wi-Fi específico del usuario.
+
+## DexOS v001
+- [x] Corregir `su` del Live sin depender de PAM/BusyBox.
+- [x] Instalar realmente firmware Wi-Fi en el root Live mediante `/etc/apk/world`.
+- [x] Migrar kernel Live a `linux-stable` 7.1.5.
+- [x] Migrar kernel del sistema instalado a `linux-stable`.
+- [x] Generar ISO versionada `DexOS-edge-x86_64-v001.iso`.
+- [x] Verificar dentro de ISO kernel stable, firmware Live, `su` wrapper, servicios Wi-Fi y wallpaper exacto.
+- [ ] Validar v001 en hardware físico del usuario y revisar `/var/log/dexos-wifi.log` si el chipset aún no aparece.
