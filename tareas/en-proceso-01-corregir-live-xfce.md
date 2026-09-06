@@ -91,3 +91,11 @@ Corregir la sesión Live XFCE congelada.
 - [x] Generar ISO versionada `DexOS-edge-x86_64-v001.iso`.
 - [x] Verificar dentro de ISO kernel stable, firmware Live, `su` wrapper, servicios Wi-Fi y wallpaper exacto.
 - [ ] Validar v001 en hardware físico del usuario y revisar `/var/log/dexos-wifi.log` si el chipset aún no aparece.
+
+## DexOS v002
+- [x] Revertir kernel stable a LTS por compatibilidad con Ventoy del usuario.
+- [x] Añadir `uas`, `sr-mod` e `isofs` al arranque temprano.
+- [x] Mantener firmware Wi-Fi del Live y `su` sin contraseña.
+- [x] Generar `DexOS-edge-x86_64-v002.iso`.
+- [x] Verificar dentro de la ISO kernel LTS, cmdline Ventoy/USB, firmware Live, `su`, kernel instalado y wallpaper exacto.
+- [ ] Validar v002 en Ventoy físico del usuario.

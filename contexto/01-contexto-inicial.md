@@ -123,3 +123,12 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - Se deshabilitó el addon opcional `xtables-addons` para el flavor stable porque Alpine edge no publica `xtables-addons-stable`.
 - La ISO se versiona como `DexOS-edge-x86_64-v001.iso`, volumen `DEXOS_V001`.
 - SHA-256 v001: `d880a1ee05d2212567554096533f39d56f1ab0dba09446fff51f39219075de24`.
+
+## DexOS v002: compatibilidad Ventoy/USB
+- En hardware físico, DexOS v001 con kernel stable 7.1.5 falló dentro del entorno de Ventoy antes de entrar al Live (`mounting /dev/loop0 on /ventoy/mnt failed`, BusyBox de Ventoy, initramfs emergency shell).
+- Se volvió al kernel LTS 6.18.48, que ya había arrancado correctamente con el Ventoy del usuario.
+- Se conservaron las correcciones de v001: firmware Wi-Fi realmente instalado en el Live, servicios de detección/refresh de Wi-Fi y `su` Live sin contraseña mediante doas.
+- Se añadieron módulos tempranos `uas`, `sr-mod` e `isofs` además de `loop,squashfs,sd-mod,usb-storage` en GRUB y Syslinux para mejorar compatibilidad con Ventoy/USB/ISO loop.
+- El sistema instalado también vuelve a `linux-lts`.
+- Nueva ISO: `DexOS-edge-x86_64-v002.iso`.
+- SHA-256: `f793ab1c0f21dc1521a8400f167d9df993ed0ed4cc7ae1773338b9f6902bc194`.

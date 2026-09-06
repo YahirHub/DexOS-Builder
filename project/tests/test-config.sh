@@ -33,7 +33,7 @@ grep -q 'udevadm settle --timeout=15' rootfs/etc/init.d/lightdm
 grep -q 'pidof xfce4-session' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q 'progress 100' rootfs/usr/local/sbin/dexos-desktop-ready
 grep -q 'ESC para volver' rootfs/usr/local/sbin/dexos-splash-keys
-grep -q 'initfs_cmdline="\$initfs_cmdline splash"' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
+grep -q 'initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet splash"' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
 
 grep -qx 'xsetroot' rootfs/etc/apk/world
 grep -q '^display-setup-script=/usr/local/sbin/dexos-xsetup$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf

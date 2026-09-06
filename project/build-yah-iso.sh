@@ -9,8 +9,8 @@ BUILD_HOME="$ROOT/build-home"
 KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
-ISO="$OUT/DexOS-edge-x86_64-v001.iso"
-VOLID="DEXOS_V001"
+ISO="$OUT/DexOS-edge-x86_64-v002.iso"
+VOLID="DEXOS_V002"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
@@ -81,7 +81,7 @@ PY
 PATCH_HASH="$(sha256sum "$ROOT/project/mkimage/patch-initramfs-init.py" | awk '{print $1}')"
 PATCH_STAMP="$CACHE/.dexos-initramfs-patch.sha256"
 if [[ ! -f "$PATCH_STAMP" ]] || [[ "$(cat "$PATCH_STAMP" 2>/dev/null || true)" != "$PATCH_HASH" ]]; then
-  rm -rf "$CACHE"/kernel_x86_64_stable_*
+  rm -rf "$CACHE"/kernel_x86_64_lts_*
   printf '%s\n' "$PATCH_HASH" > "$PATCH_STAMP"
 fi
 rm -rf "$CACHE"/apkovl_* "$CACHE"/image-*-x86_64-yahxfce "$ISO" "$ISO.sha256" "$ISO.sha512"

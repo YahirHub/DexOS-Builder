@@ -26,8 +26,8 @@ with tempfile.TemporaryDirectory() as td:
 
 # GRUB entries must never depend on /dev/vda3; force stable UUID and root-storage modules.
 sample = '''menuentry "DexOS" {
-    linux /boot/vmlinuz-stable root=/dev/vda3 quiet modules=sd-mod,ext4
-    initrd /boot/initramfs-stable
+    linux /boot/vmlinuz-lts root=/dev/vda3 quiet modules=sd-mod,ext4
+    initrd /boot/initramfs-lts
 }
 '''
 fixed = m.rewrite_grub_root(sample, '1111-2222')
@@ -51,7 +51,7 @@ sample_cfg={'disk':'/dev/sda','hostname':'dexos-pc','username':'usuario','passwo
 assert len(sample_cfg['root_password']) >= 8
 
 # GRUB rewrite also keeps quiet splash on installed entries.
-assert 'quiet splash' in m.rewrite_grub_root('  linux /boot/vmlinuz-stable root=/dev/vda3 quiet\n','1111-2222')
+assert 'quiet splash' in m.rewrite_grub_root('  linux /boot/vmlinuz-lts root=/dev/vda3 quiet\n','1111-2222')
 
 
 # Installed systems must keep the Wi-Fi reprobe service available and enabled by backend wiring.

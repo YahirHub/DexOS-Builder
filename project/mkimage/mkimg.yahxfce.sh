@@ -1,18 +1,15 @@
 profile_yahxfce() {
     profile_standard
-    # linux-stable exists in edge but the optional xtables-addons-stable package
-    # does not. DexOS does not need that addon, so disable it explicitly.
-    kernel_addons=""
-    initfs_cmdline="$initfs_cmdline splash"
+    initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet splash"
     profile_abbrev="dexos"
     title="DexOS Live"
     desc="DexOS: sistema Live ligero basado en Alpine Linux con XFCE para PC y laptop."
     arch="x86_64"
     image_name="DexOS"
-    output_filename="DexOS-edge-x86_64-v001.iso"
+    output_filename="DexOS-edge-x86_64-v002.iso"
     hostname="dexos-live"
     apkovl="genapkovl-yahxfce.sh"
-    kernel_flavors="stable"
+    kernel_flavors="lts"
     boot_addons="amd-ucode intel-ucode"
     initrd_ucode="/boot/amd-ucode.img /boot/intel-ucode.img"
     syslinux_timeout=10
@@ -32,5 +29,5 @@ profile_yahxfce() {
         iw util-linux-misc wireless-tools wpa_supplicant wireless-regdb bluez bluez-openrc \
         pipewire pipewire-pulse pipewire-alsa wireplumber alsa-utils pavucontrol \
         upower brightnessctl util-linux sfdisk dosfstools e2fsprogs efibootmgr grub-bios grub-efi syslinux parted \
-        pciutils usbutils tzdata ca-certificates curl linux-stable linux-firmware"
+        pciutils usbutils tzdata ca-certificates curl linux-lts linux-firmware"
 }
