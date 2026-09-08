@@ -1,0 +1,62 @@
+#!/sbin/openrc-run
+
+description="Connect DexOS to the Wi-Fi configured by the installer"
+CONFIG=/etc/dexos/wifi-firstboot.conf
+PROFILE="DexOS WiFi"
+
+depend() {
+    need networkmanager
+    after udev-postmount
+}
+
+start() {
+    [ -f "$CONFIG" ] || return 0
+
+    ebegin "Connecting configured Wi-Fi"
+    . "$CONFIG"
+    ssid=$(printf '%s' "${SSID_B64:-}" | base64 -d 2>/dev/null || true)
+    password=$(printf '%s' "${PASSWORD_B64:-}" | base64 -d 2>/dev/null || true)
+    if [ -z "$ssid" ]; then
+        ewarn "Wi-Fi configuration is invalid; keeping $CONFIG for inspection"
+        eend 0
+        return 0
+    fi
+
+    rfkill unblock wifi >/dev/null 2>&1 || true
+    nmcli radio wifi on >/dev/null 2>&1 || true
+
+    dev=''
+    i=0
+    while [ "$i" -lt 15 ]; do
+        dev=$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi" && $1!="" {print $1; exit}')
+        [ -n "$dev" ] && break
+        sleep 1
+        i=$((i + 1))
+    done
+    if [ -z "$dev" ]; then
+        ewarn "No Wi-Fi adapter is ready yet; configuration will be retried on the next boot"
+        eend 0
+        return 0
+    fi
+
+    nmcli connection delete "$PROFILE" >/dev/null 2>&1 || true
+    if [ -n "$password" ]; then
+        if printf '%s\n' "$password" | nmcli --ask --wait 45 device wifi connect "$ssid" ifname "$dev" name "$PROFILE" >/dev/null 2>&1; then
+            rm -f "$CONFIG"
+            unset password
+            eend 0
+            return 0
+        fi
+    else
+        if nmcli --wait 45 device wifi connect "$ssid" ifname "$dev" name "$PROFILE" >/dev/null 2>&1; then
+            rm -f "$CONFIG"
+            eend 0
+            return 0
+        fi
+    fi
+
+    unset password
+    ewarn "Could not connect to '$ssid'; configuration will be retried on the next boot"
+    eend 0
+    return 0
+}

@@ -14,8 +14,11 @@
     mode: 'coexist',
     disks: [],
     parts: [],
+    freeSpaces: [],
     disk: '',
     rootPart: '',
+    rootFreeStart: '',
+    rootFreeSectors: '',
     efiPart: '',
     installing: false
   };
@@ -45,7 +48,9 @@
   }
 
   function selectedRoot() {
-    return state.parts.find((p) => p.path === state.rootPart);
+    if (state.rootPart) return state.parts.find((p) => p.path === state.rootPart);
+    if (state.rootFreeStart) return state.freeSpaces.find((f) => f.disk === state.disk && f.start === state.rootFreeStart && f.sectors === state.rootFreeSectors);
+    return undefined;
   }
 
   function node(tag, className, text) {
@@ -78,8 +83,8 @@
       const done = index < state.step;
       li.className = 'min-w-0';
       li.textContent = '';
-      const wrap = node('div', `flex items-center gap-3 rounded-xl px-2 py-2 transition lg:px-3 ${active ? 'bg-dex-950/65 text-white ring-1 ring-dex-700/40' : 'text-zinc-500'}`);
-      const bubble = node('span', `grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs font-semibold ${active ? 'bg-dex-700 text-white' : done ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-zinc-500'}`);
+      const wrap = node('div', `flex min-w-0 items-center justify-center gap-1 rounded-xl px-1 py-2 transition sm:gap-2 lg:justify-start lg:px-3 ${active ? 'bg-dex-950/65 text-white ring-1 ring-dex-700/40' : 'text-zinc-500'}`);
+      const bubble = node('span', `grid h-7 w-7 shrink-0 place-items-center rounded-lg text-[11px] font-semibold sm:h-8 sm:w-8 sm:rounded-xl sm:text-xs ${active ? 'bg-dex-700 text-white' : done ? 'bg-emerald-500/15 text-emerald-300' : 'bg-white/5 text-zinc-500'}`);
       if (done) bubble.append(icon('check', 'h-4 w-4'));
       else bubble.textContent = String(index + 1);
       const copy = node('span', 'hidden min-w-0 lg:block');
@@ -98,7 +103,7 @@
     $('step-title').textContent = steps[state.step][1];
     $('back-btn').disabled = state.step === 0 || state.installing;
     $('next-btn').hidden = state.step === 4;
-    $('wizard-footer').hidden = state.step === 4 && state.installing;
+    $('wizard-footer').hidden = state.step === 4;
     if (state.step === 3) renderSummary();
     updateStepper();
     setError('');
@@ -108,6 +113,7 @@
   function parseInventory(text) {
     const disks = [];
     const parts = [];
+    const freeSpaces = [];
     text.split(/\r?\n/).filter(Boolean).forEach((line) => {
       const f = line.split('\t');
       if (f[0] === 'DISK') {
@@ -117,18 +123,31 @@
         });
       } else if (f[0] === 'PART') {
         parts.push({
-          path: f[1], disk: f[2], sizeBytes: Number(f[3] || 0), size: f[4] || '', fs: f[5] || 'sin-formato',
+          kind: 'partition', path: f[1], disk: f[2], sizeBytes: Number(f[3] || 0), size: f[4] || '', fs: f[5] || 'sin-formato',
           label: f[6] || '', partLabel: f[7] || '', partType: f[8] || '', mount: f[9] || '',
           eligible: f[10] === 'yes', reason: f[11] || '', efi: f[12] === 'yes'
+        });
+      } else if (f[0] === 'FREE') {
+        freeSpaces.push({
+          kind: 'free', disk: f[1], start: f[2] || '', sectors: f[3] || '',
+          sizeBytes: Number(f[4] || 0), size: f[5] || '', scheme: f[6] || '', eligible: true,
+          fs: 'no-asignado'
         });
       }
     });
     state.disks = disks;
     state.parts = parts;
+    state.freeSpaces = freeSpaces;
     if (!diskByPath(state.disk)) {
       state.disk = disks[0]?.path || '';
       state.rootPart = '';
+      state.rootFreeStart = '';
+      state.rootFreeSectors = '';
       state.efiPart = '';
+    }
+    if (state.rootFreeStart && !selectedRoot()) {
+      state.rootFreeStart = '';
+      state.rootFreeSectors = '';
     }
   }
 
@@ -136,6 +155,7 @@
     return ({
       'particion-efi': 'Reservada para EFI',
       'bios-boot': 'Partición BIOS Boot',
+      'reservada-windows': 'Reservada por Windows; no debe usarse',
       'montada': 'Está montada',
       'solo-lectura': 'Sólo lectura',
       'menor-1GiB': 'Menor de 1 GiB',
@@ -155,24 +175,26 @@
     }
     state.disks.forEach((disk) => {
       const active = state.disk === disk.path;
-      const btn = node('button', `flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${active ? 'border-dex-500/50 bg-dex-950/40 ring-1 ring-dex-600/30' : 'border-white/10 bg-black/20 hover:border-white/20'}`);
+      const btn = node('button', `flex w-full min-w-0 flex-col items-stretch justify-between gap-3 rounded-2xl border p-4 text-left transition sm:flex-row sm:items-center sm:gap-4 ${active ? 'border-dex-500/50 bg-dex-950/40 ring-1 ring-dex-600/30' : 'border-white/10 bg-black/20 hover:border-white/20'}`);
       btn.type = 'button';
       btn.addEventListener('click', () => {
         state.disk = disk.path;
         state.rootPart = '';
+        state.rootFreeStart = '';
+        state.rootFreeSectors = '';
         state.efiPart = '';
         renderStorage();
       });
-      const left = node('div', 'flex min-w-0 items-center gap-3');
+      const left = node('div', 'flex w-full min-w-0 items-center gap-3 sm:w-auto');
       const ico = node('div', `grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active ? 'bg-dex-900 text-dex-200' : 'bg-white/5 text-zinc-500'}`);
       ico.append(icon('hard-drive', 'h-5 w-5'));
       const copy = node('div', 'min-w-0');
-      copy.append(node('div', 'truncate text-sm font-semibold text-white', disk.path));
-      copy.append(node('div', 'mt-1 truncate text-xs text-zinc-500', [disk.model, disk.transport].filter(Boolean).join(' · ') || 'Disco local'));
+      copy.append(node('div', 'break-all text-sm font-semibold text-white', disk.path));
+      copy.append(node('div', 'mt-1 break-words text-xs text-zinc-500', [disk.model, disk.transport].filter(Boolean).join(' · ') || 'Disco local'));
       left.append(ico, copy);
-      const right = node('div', 'shrink-0 text-right');
+      const right = node('div', 'flex w-full shrink-0 items-center justify-between gap-3 text-left sm:block sm:w-auto sm:text-right');
       right.append(node('div', 'text-sm font-medium text-zinc-200', disk.size || `${disk.sizeBytes} B`));
-      const caps = node('div', 'mt-1 flex justify-end gap-1');
+      const caps = node('div', 'flex flex-wrap justify-end gap-1 sm:mt-1');
       if (disk.bios) caps.append(badge('BIOS', 'neutral'));
       if (disk.liveUefi) caps.append(badge('Live UEFI', 'red'));
       right.append(caps);
@@ -189,37 +211,67 @@
     if (state.mode !== 'coexist') return;
 
     const parts = state.parts.filter((p) => p.disk === state.disk);
-    if (!parts.length) {
-      list.append(node('div', 'rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-100', 'Este disco no contiene particiones. Usa “disco completo” o crea una partición primero.'));
+    const freeSpaces = state.freeSpaces.filter((f) => f.disk === state.disk);
+    if (!parts.length && !freeSpaces.length) {
+      list.append(node('div', 'rounded-2xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-100', 'Este disco no contiene una partición utilizable ni al menos 1 GiB de espacio no asignado. Puedes usar “disco completo” o liberar espacio desde otro sistema.'));
       return;
     }
 
     parts.forEach((part) => {
       const active = state.rootPart === part.path;
-      const btn = node('button', `flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${active ? 'border-dex-500/50 bg-dex-950/40 ring-1 ring-dex-600/30' : part.eligible ? 'border-white/10 bg-black/20 hover:border-white/20' : 'cursor-not-allowed border-white/5 bg-black/10 opacity-55'}`);
+      const btn = node('button', `flex w-full min-w-0 flex-col items-stretch justify-between gap-3 rounded-2xl border p-4 text-left transition sm:flex-row sm:items-center sm:gap-4 ${active ? 'border-dex-500/50 bg-dex-950/40 ring-1 ring-dex-600/30' : part.eligible ? 'border-white/10 bg-black/20 hover:border-white/20' : 'cursor-not-allowed border-white/5 bg-black/10 opacity-55'}`);
       btn.type = 'button';
       btn.disabled = !part.eligible;
       if (part.eligible) btn.addEventListener('click', () => {
         state.rootPart = part.path;
+        state.rootFreeStart = '';
+        state.rootFreeSectors = '';
         if (state.efiPart === part.path) state.efiPart = '';
         renderStorage();
       });
-      const left = node('div', 'flex min-w-0 items-center gap-3');
+      const left = node('div', 'flex w-full min-w-0 items-center gap-3 sm:w-auto');
       const ico = node('div', `grid h-10 w-10 shrink-0 place-items-center rounded-xl ${part.fs === 'sin-formato' ? 'bg-dex-950 text-dex-300' : 'bg-white/5 text-zinc-500'}`);
       ico.append(icon(part.fs === 'sin-formato' ? 'square-dashed' : 'database', 'h-5 w-5'));
       const copy = node('div', 'min-w-0');
       const title = node('div', 'flex flex-wrap items-center gap-2');
-      title.append(node('span', 'text-sm font-semibold text-white', part.path));
+      title.append(node('span', 'break-all text-sm font-semibold text-white', part.path));
       if (part.fs === 'sin-formato') title.append(badge('Sin formato', 'red'));
       else title.append(badge(part.fs, 'neutral'));
       if (part.efi) title.append(badge('EFI', 'amber'));
       copy.append(title);
-      const subtitle = [part.label, part.partLabel].filter(Boolean).join(' · ') || (part.eligible ? 'Disponible para DexOS' : reasonText(part.reason));
-      copy.append(node('div', 'mt-1 truncate text-xs text-zinc-500', subtitle));
+      const subtitle = [part.label, part.partLabel].filter(Boolean).join(' · ') || (part.eligible ? 'Partición existente disponible para DexOS' : reasonText(part.reason));
+      copy.append(node('div', 'mt-1 break-words text-xs text-zinc-500', subtitle));
       left.append(ico, copy);
-      const right = node('div', 'shrink-0 text-right');
+      const right = node('div', 'flex w-full shrink-0 items-center justify-between gap-3 text-left sm:block sm:w-auto sm:text-right');
       right.append(node('div', 'text-sm font-medium text-zinc-200', part.size));
-      if (!part.eligible) right.append(node('div', 'mt-1 text-[11px] text-zinc-600', reasonText(part.reason)));
+      if (!part.eligible) right.append(node('div', 'break-words text-[11px] text-zinc-600 sm:mt-1', reasonText(part.reason)));
+      btn.append(left, right);
+      list.append(btn);
+    });
+
+    freeSpaces.forEach((space) => {
+      const active = !state.rootPart && state.rootFreeStart === space.start && state.rootFreeSectors === space.sectors;
+      const btn = node('button', `flex w-full min-w-0 flex-col items-stretch justify-between gap-3 rounded-2xl border p-4 text-left transition sm:flex-row sm:items-center sm:gap-4 ${active ? 'border-dex-500/50 bg-dex-950/40 ring-1 ring-dex-600/30' : 'border-emerald-400/20 bg-emerald-500/[.04] hover:border-emerald-400/35'}`);
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        state.rootPart = '';
+        state.rootFreeStart = space.start;
+        state.rootFreeSectors = space.sectors;
+        renderStorage();
+      });
+      const left = node('div', 'flex w-full min-w-0 items-center gap-3 sm:w-auto');
+      const ico = node('div', 'grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-500/10 text-emerald-300');
+      ico.append(icon('square-dashed', 'h-5 w-5'));
+      const copy = node('div', 'min-w-0');
+      const title = node('div', 'flex flex-wrap items-center gap-2');
+      title.append(node('span', 'text-sm font-semibold text-white', 'Espacio no asignado'));
+      title.append(badge('Sin partición', 'green'));
+      copy.append(title);
+      copy.append(node('div', 'mt-1 break-words text-xs leading-5 text-zinc-500', `DexOS creará una nueva partición aquí sólo al confirmar${space.scheme ? ` · tabla ${space.scheme.toUpperCase()}` : ''}.`));
+      left.append(ico, copy);
+      const right = node('div', 'flex w-full shrink-0 items-center justify-between gap-3 text-left sm:block sm:w-auto sm:text-right');
+      right.append(node('div', 'text-sm font-medium text-emerald-200', space.size || `${space.sizeBytes} B`));
+      right.append(node('div', 'mt-1 text-[11px] text-zinc-600', `sector ${space.start}`));
       btn.append(left, right);
       list.append(btn);
     });
@@ -287,21 +339,24 @@
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const rows = (await response.text()).split(/\r?\n/).filter(Boolean).map((l) => l.split('\t'));
       const live = {};
+      const net = {};
       const ips = [];
       rows.forEach((r) => {
         if (r[0] === 'LIVE') {
           const pos = (r[1] || '').indexOf('=');
           if (pos > 0) live[r[1].slice(0, pos)] = r[1].slice(pos + 1);
+        } else if (r[0] === 'NET') {
+          net[r[1] || ''] = r[2] || '';
         } else if (r[0] === 'IP') ips.push({ dev: r[1], ip: r[2] });
       });
       dl.textContent = '';
       const add = (name, value, tone = '') => {
-        const row = node('div', 'flex items-start justify-between gap-4');
-        row.append(node('dt', 'text-zinc-500', name), node('dd', `text-right ${tone || 'text-zinc-300'}`, value));
+        const row = node('div', 'flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4');
+        row.append(node('dt', 'shrink-0 text-zinc-500', name), node('dd', `break-anywhere min-w-0 sm:text-right ${tone || 'text-zinc-300'}`, value));
         dl.append(row);
       };
       add('Web', 'Activo', 'text-emerald-300');
-      add('mDNS', 'dexos-installer.local');
+      add('mDNS', 'dex.local');
       if (live.HOTSPOT === 'active') {
         add('Hotspot', `${live.SSID || 'Dex-Installer'} · ${live.AP_IP || '10.42.0.1'}`, 'text-dex-200');
         if (live.WIFI_DEVICE) add('Adaptador', live.WIFI_DEVICE);
@@ -314,6 +369,8 @@
         add('Hotspot', 'Buscando tarjeta Wi-Fi/USB…', 'text-amber-200');
         if (live.WIFI_DEVICE) add('Adaptador', live.WIFI_DEVICE);
       }
+      const internetLabel = ({ full: 'Disponible', limited: 'Limitada', portal: 'Portal cautivo', none: 'Sin conexión', unknown: 'Desconocida' })[net.connectivity] || net.connectivity;
+      if (internetLabel) add('Internet', internetLabel, net.connectivity === 'full' ? 'text-emerald-300' : 'text-zinc-300');
       ips.filter((x) => x.ip !== '10.42.0.1').forEach((x) => add(`IPv4 · ${x.dev}`, x.ip));
       add('SSH Live', 'root / root');
       $('live-chip').innerHTML = '<span class="h-2 w-2 rounded-full bg-emerald-400"></span> Live listo';
@@ -328,13 +385,13 @@
   function validateStorage() {
     if (!state.disk) return 'Selecciona un disco de destino.';
     if (state.mode === 'whole') return '';
-    if (!state.rootPart) return 'Selecciona la partición que se formateará para DexOS.';
+    if (!state.rootPart && !state.rootFreeStart) return 'Selecciona una partición existente o un espacio no asignado para DexOS.';
     const root = selectedRoot();
-    if (!root?.eligible) return 'La partición elegida ya no es válida. Actualiza el inventario.';
+    if (!root?.eligible) return 'El destino elegido ya no es válido. Pulsa actualizar y vuelve a seleccionarlo.';
     const disk = selectedDisk();
     const efiCandidates = state.parts.filter((p) => p.disk === state.disk && p.efi && p.path !== state.rootPart);
-    if (disk?.liveUefi && !state.efiPart) return 'El Live arrancó en UEFI: selecciona una partición EFI existente.';
-    if (!disk?.bios && !state.efiPart && efiCandidates.length) return 'Este disco no tiene BIOS Boot: selecciona una partición EFI.';
+    if (disk?.liveUefi && !state.efiPart) return 'El Live arrancó en UEFI: selecciona una partición EFI existente. No se formateará.';
+    if (!disk?.bios && !state.efiPart && efiCandidates.length) return 'Este disco no tiene BIOS Boot: selecciona una partición EFI existente.';
     return '';
   }
 
@@ -346,8 +403,22 @@
       adminPassword: $('admin-password').value,
       adminRepeat: $('admin-password-repeat').value,
       rootPassword: $('same-root-password').checked ? '' : $('root-password').value,
-      rootSsh: $('root-ssh').checked ? 'yes' : 'no'
+      rootSsh: $('root-ssh').checked ? 'yes' : 'no',
+      wifiSsid: $('install-wifi-ssid').value.trim(),
+      wifiPassword: $('install-wifi-password').value
     };
+  }
+
+  function validateWifiSetup() {
+    const v = identityValues();
+    if (!v.wifiSsid) {
+      if (v.wifiPassword) return 'Escribe el nombre de la red Wi-Fi o borra la contraseña.';
+      return '';
+    }
+    if (new TextEncoder().encode(v.wifiSsid).length > 32) return 'El SSID Wi-Fi no puede superar 32 bytes.';
+    if (v.wifiPassword && (v.wifiPassword.length < 8 || v.wifiPassword.length > 64)) return 'La contraseña Wi-Fi debe tener entre 8 y 64 caracteres, o quedar vacía para una red abierta.';
+    if (v.wifiPassword.length === 64 && !/^[0-9a-fA-F]{64}$/.test(v.wifiPassword)) return 'Una contraseña Wi-Fi de 64 caracteres debe ser una clave hexadecimal.';
+    return '';
   }
 
   function validateIdentity() {
@@ -376,19 +447,26 @@
     addSummaryRow('Servidor', v.hostname || 'dexos-server.local');
     addSummaryRow('Administrador', v.adminUser || 'admin');
     addSummaryRow('Zona horaria', v.timezone || 'UTC');
+    addSummaryRow('Wi-Fi tras reiniciar', v.wifiSsid || 'No preconfigurado');
     addSummaryRow('Root por SSH', v.rootSsh === 'yes' ? 'Sí' : 'No');
     addSummaryRow('Modo', state.mode === 'whole' ? 'Disco completo' : 'Coexistencia');
     addSummaryRow('Disco', `${state.disk}${disk?.size ? ` · ${disk.size}` : ''}`, true);
     if (state.mode === 'coexist') {
-      addSummaryRow('Raíz DexOS', `${state.rootPart}${root?.fs === 'sin-formato' ? ' · sin formato' : root?.fs ? ` · ${root.fs}` : ''}`, true);
+      if (root?.kind === 'free') {
+        addSummaryRow('Raíz DexOS', `Espacio no asignado · ${root.size} · se creará una partición nueva`, true);
+        $('destructive-copy').textContent = `Se creará una nueva partición DexOS únicamente dentro del espacio no asignado seleccionado en ${state.disk}. Las particiones existentes se conservarán${state.efiPart ? `, incluida la ESP ${state.efiPart}` : ''}.`;
+      } else {
+        addSummaryRow('Raíz DexOS', `${state.rootPart}${root?.fs === 'sin-formato' ? ' · sin formato' : root?.fs ? ` · ${root.fs}` : ''}`, true);
+        $('destructive-copy').textContent = `Se formateará únicamente ${state.rootPart} como ext4. Las demás particiones se conservarán${state.efiPart ? `, incluida ${state.efiPart}` : ''}.`;
+      }
       addSummaryRow('ESP', state.efiPart || 'Ninguna');
-      $('destructive-copy').textContent = `Se formateará únicamente ${state.rootPart} como ext4. Las demás particiones se conservarán${state.efiPart ? `, incluida ${state.efiPart}` : ''}.`;
     } else {
       $('destructive-copy').textContent = `Se borrará todo el contenido de ${state.disk} y se crearán nuevas particiones para DexOS Server.`;
     }
   }
 
   function validateStep() {
+    if (state.step === 0) return validateWifiSetup();
     if (state.step === 1) return validateStorage();
     if (state.step === 2) return validateIdentity();
     if (state.step === 3 && !$('final-confirm').checked) return 'Marca la confirmación final para comenzar.';
@@ -404,9 +482,13 @@
       root_password: v.rootPassword,
       ssh_root_login: v.rootSsh,
       timezone: v.timezone,
+      wifi_ssid: v.wifiSsid,
+      wifi_password: v.wifiPassword,
       install_mode: state.mode,
       disk: state.disk,
       root_part: state.mode === 'coexist' ? state.rootPart : '',
+      root_free_start: state.mode === 'coexist' ? state.rootFreeStart : '',
+      root_free_sectors: state.mode === 'coexist' ? state.rootFreeSectors : '',
       efi_part: state.mode === 'coexist' ? (state.efiPart || 'none') : '',
       confirm: 'INSTALLAR'
     });
@@ -458,9 +540,33 @@
     }
   }
 
+  async function rebootSystem() {
+    const button = $('reboot-btn');
+    const status = $('reboot-status');
+    button.disabled = true;
+    status.hidden = false;
+    status.textContent = 'Solicitando reinicio…';
+    try {
+      const response = await fetch('/cgi-bin/reboot.cgi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: 'confirm=REBOOT'
+      });
+      const text = await response.text();
+      if (!response.ok || !text.includes('REBOOTING')) throw new Error(text.trim() || `HTTP ${response.status}`);
+      button.textContent = 'Reiniciando…';
+      status.textContent = 'El Live se está apagando. La conexión con esta página se cerrará en unos segundos.';
+    } catch (error) {
+      button.disabled = false;
+      status.textContent = `No se pudo reiniciar: ${error.message}`;
+    }
+  }
+
   modeCards.forEach((card) => card.addEventListener('click', () => {
     state.mode = card.dataset.mode;
     state.rootPart = '';
+    state.rootFreeStart = '';
+    state.rootFreeSectors = '';
     state.efiPart = '';
     renderStorage();
   }));
@@ -468,6 +574,7 @@
   $('efi-select').addEventListener('change', (event) => { state.efiPart = event.target.value; });
   $('same-root-password').addEventListener('change', () => { $('root-password-wrap').hidden = $('same-root-password').checked; });
   $('refresh-btn').addEventListener('click', loadInventory);
+  $('reboot-btn').addEventListener('click', rebootSystem);
   $('back-btn').addEventListener('click', () => showStep(state.step - 1));
   $('next-btn').addEventListener('click', async () => {
     const error = validateStep();

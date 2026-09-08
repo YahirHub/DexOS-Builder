@@ -65,6 +65,12 @@ if old in s:
     s = s.replace(old, new, 1)
 elif new not in s:
     raise SystemExit('update-kernel firmware anchor not found')
+# Alpine already builds modloop as SquashFS/XZ. Make it an explicit build
+# invariant so a future Alpine change cannot silently fall back to gzip.
+if '-comp xz' not in s:
+    raise SystemExit('update-kernel no usa SquashFS con compresión XZ')
+if 'x86|x86_64) mksfs="-Xbcj x86"' not in s:
+    raise SystemExit('update-kernel no aplica filtro BCJ x86 al SquashFS XZ')
 p.write_text(s)
 PY
 rm -rf "$CACHE"/apkovl_* "$CACHE"/image-*-x86_64-dexserver "$OUT"/DexOS-Server-edge-x86_64.iso*

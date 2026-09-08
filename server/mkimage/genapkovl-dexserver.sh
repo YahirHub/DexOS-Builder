@@ -1,9 +1,10 @@
 #!/bin/sh
 set -eu
 
-HOSTNAME="${1:-dexos-installer}"
+HOSTNAME="${1:-dex}"
 ARGON_ASSET=/work/server/assets/argon-grub-theme
 WEB_ASSET=/work/server/web
+INSTALLED_ASSET=/work/server/installed
 LIVE_HELPER=/work/server/dex-installer-live
 LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon de GRUB" >&2; exit 1; }
@@ -13,6 +14,9 @@ LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -x "$WEB_ASSET/cgi-bin/install.cgi" ] || { echo "Falta CGI de instalación" >&2; exit 1; }
 [ -x "$LIVE_HELPER" ] || { echo "Falta helper Dex-Installer Live" >&2; exit 1; }
 [ -x "$LIVE_SERVICE" ] || { echo "Falta servicio OpenRC Dex-Installer Live" >&2; exit 1; }
+[ -x "$INSTALLED_ASSET/dexos-wifi-firstboot" ] || { echo "Falta servicio Wi-Fi instalado" >&2; exit 1; }
+[ -x "$INSTALLED_ASSET/wifi" ] || { echo "Falta herramienta wifi" >&2; exit 1; }
+[ -x "$INSTALLED_ASSET/diskinfo" ] || { echo "Falta diskinfo" >&2; exit 1; }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 # The archive contains `.` itself. mktemp creates it as 0700; if preserved,
@@ -34,7 +38,8 @@ mkdir -p \
   "$tmp/usr/local/sbin" \
   "$tmp/usr/share/dexos/grub.d" \
   "$tmp/usr/share/dexos/argon-grub-theme" \
-  "$tmp/usr/share/dexos/installer-web"
+  "$tmp/usr/share/dexos/installer-web" \
+  "$tmp/usr/share/dexos/installed"
 
 printf '%s\n' "$HOSTNAME" > "$tmp/etc/hostname"
 cat > "$tmp/etc/hosts" <<EOF
@@ -88,12 +93,13 @@ sed -i -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$tmp/etc/apk/world"
 cp /work/server/packages.txt "$tmp/usr/share/dexos/server-packages.txt"
 cp -a "$ARGON_ASSET/." "$tmp/usr/share/dexos/argon-grub-theme/"
 cp -a "$WEB_ASSET/." "$tmp/usr/share/dexos/installer-web/"
+cp -a "$INSTALLED_ASSET/." "$tmp/usr/share/dexos/installed/"
 
 cat > "$tmp/etc/motd" <<'EOF'
 DexOS Server
 Ultra-light Alpine Linux server edition.
 
-Web installer: http://dexos-installer.local/
+Web installer: http://dex.local/
 Wi-Fi installer: Dex-Installer (si la tarjeta soporta modo AP)
 SSH temporal Live: root / root
 Terminal installer: install
@@ -144,7 +150,11 @@ chmod 0755 \
   "$tmp/usr/local/sbin/dex-installer-live" \
   "$tmp/etc/init.d/dex-installer-live" \
   "$tmp/usr/share/dexos/grub.d/31_dexos_other_os" \
-  "$tmp/usr/share/dexos/installer-web/cgi-bin/"*.cgi
+  "$tmp/usr/share/dexos/installer-web/cgi-bin/"*.cgi \
+  "$tmp/usr/share/dexos/installed/dexos-wifi-firstboot" \
+  "$tmp/usr/share/dexos/installed/wifi" \
+  "$tmp/usr/share/dexos/installed/diskinfo"
+chmod 0644 "$tmp/usr/share/dexos/installed/10-dexos-diskinfo.sh"
 
 for svc in devfs dmesg udev udev-trigger udev-settle hwdrivers modloop; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/sysinit/$svc"

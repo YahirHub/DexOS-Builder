@@ -6,7 +6,7 @@ profile_dexserver() {
     arch="x86_64"
     image_name="DexOS-Server"
     output_filename="DexOS-Server-edge-x86_64.iso"
-    hostname="dexos-installer"
+    hostname="dex"
     apkovl="genapkovl-dexserver.sh"
     kernel_flavors="lts"
     kernel_firmware_packages="linux-firmware-realtek linux-firmware-rtlwifi linux-firmware-rtw88 linux-firmware-rtw89 linux-firmware-mediatek linux-firmware-intel linux-firmware-airoha linux-firmware-atmel linux-firmware-mrvl linux-firmware-nxp linux-firmware-other linux-firmware-ath6k linux-firmware-ath9k_htc linux-firmware-ath10k linux-firmware-ath11k linux-firmware-ath12k linux-firmware-brcm linux-firmware-cypress linux-firmware-qca linux-firmware-mwl8k linux-firmware-mwlwifi linux-firmware-libertas linux-firmware-ti-connectivity linux-firmware-rsi linux-firmware-wfx"

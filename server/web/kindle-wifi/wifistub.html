@@ -1,0 +1,10 @@
+#!/bin/sh
+# Captive-portal probe response. Return a real HTTP redirect instead of static
+# HTML so Android/Windows/iOS do not render the probe body as raw source.
+printf 'Status: 302 Found\r\n'
+printf 'Location: http://dex.local/\r\n'
+printf 'Cache-Control: no-store, no-cache, must-revalidate\r\n'
+printf 'Pragma: no-cache\r\n'
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+printf 'Content-Length: 0\r\n'
+printf '\r\n'

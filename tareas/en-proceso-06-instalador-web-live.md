@@ -27,14 +27,20 @@ Permitir instalar DexOS Server sobre particiones existentes aunque no tengan fil
 - [x] Validación QEMU del hotplug/AP con `mac80211_hwsim`: radio añadido después del boot -> `HOTSPOT=active`.
 - [x] Cliente Wi-Fi virtual conectado a `Dex-Installer`, DHCP `10.42.0.122`, DNS cautivo -> `10.42.0.1`, HTTP -> `DexOS Server Installer`.
 - [x] ISO recompilada e inspeccionada internamente.
-- [ ] Validar con la tarjeta Wi-Fi/USB física del equipo del usuario.
-- [ ] Ejecutar y validar de extremo a extremo una instalación completa iniciada desde el POST CGI del navegador y primer boot del sistema resultante.
-- [ ] Cerrar tarea y crear commit final en español una vez pasen las dos validaciones anteriores.
+- [x] El usuario confirmó en hardware físico que el flujo web corregido funciona correctamente, incluida la instalación sobre el almacenamiento preparado desde Windows.
+- [x] Validación E2E QEMU de creación de raíz dentro de espacio no asignado, preservando PARTUUID y contenido de las particiones existentes.
+- [x] Se prototipó conexión Wi-Fi desde el Live; posteriormente se retiró al comprobar en hardware físico que AP+STA no era fiable.
+- [x] Se probó AP+STA mediante `dexsta0`; tras el resultado físico se eliminó esa ruta y el Live ya no intenta conectarse a otra red.
+- [x] Añadir botón `Reiniciar ahora` sólo después de una instalación confirmada y proteger el CGI con `/run/dexos-install-complete`.
+- [x] Ocultar completamente footer/botón Continuar durante el paso de instalación; `[hidden]` ya no puede ser anulado por las clases Tailwind.
+- [x] Validación histórica de `network.cgi` y reboot; `network.cgi` fue retirado al adoptar Wi-Fi diferido, mientras el reboot permanece.
+- [x] AP+STA simultáneo descartado tras la prueba física del usuario; se sustituyó por configuración Wi-Fi para el primer arranque.
+- [ ] Validar en hardware físico la nueva ISO con Wi-Fi diferido y `diskinfo`; cerrar la tarea después de esa prueba.
 
 ## ISO actual para prueba física
 - `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
-- `740294656` bytes (~706 MiB)
-- SHA-256: `91db6e9aa83a2c2e3abfc959bdaec8845a875815d6fe2c4b4276a11deb27ea3d`
+- `741343232` bytes (~707 MiB)
+- SHA-256: `0fb1b37937d6869e27e4d4f2ebfed372db6161058b1884722927f74801671bf7`
 - APKINDEX offline: 194 paquetes.
 
 ## Nota de diagnóstico
@@ -49,3 +55,24 @@ rfkill list
 ```
 
 El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, para separar falta de driver/firmware de un adaptador cuyo driver no soporta modo AP.
+
+
+## Ajuste solicitado 2026-09-08 — Wi-Fi posterior al reinicio y dashboard
+- [x] Eliminar el intento de conectar el Live a Wi-Fi mientras mantiene `Dex-Installer`; en hardware físico no fue viable.
+- [x] Pedir SSID y contraseña opcionales en el formulario y usarlos sólo en el sistema instalado después de reiniciar.
+- [x] Añadir servicio de primer arranque que cree/conecte el perfil NetworkManager y conserve el hotspot exclusivamente en el Live.
+- [x] Añadir comando `wifi` para ver estado, escanear, conectar, activar perfiles guardados, desconectar y olvidar redes.
+- [x] Añadir `/usr/local/bin/diskinfo` y ejecutarlo automáticamente al abrir una sesión interactiva.
+- [x] Mantener el botón `Reiniciar ahora` y el footer oculto durante la instalación.
+- [x] Recompilar ISO y validar en QEMU el perfil Wi-Fi pendiente, scripts instalados y dashboard.
+
+
+### Validación del ajuste Wi-Fi diferido
+- Instalación interactiva real en QEMU con SSID `Casa-E2E`: el Live mostró que la conexión se aplaza y completó la instalación correctamente.
+- El target quedó con `/etc/dexos/wifi-firstboot.conf` modo `0600`, SSID correcto y contraseña codificada; no se imprimió la contraseña.
+- `dexos-wifi-firstboot`, `wifi`, `diskinfo` y `10-dexos-diskinfo.sh` quedaron instalados con permisos correctos y el servicio está en `default`.
+- NetworkManager instalado queda con `rc_need="wpa_supplicant"` y `wpa_supplicant` habilitado para disponer del backend Wi-Fi D-Bus.
+- Smoke test con `nmcli` simulado confirmó que `dexos-wifi-firstboot` conecta por `--ask`, elimina el archivo temporal tras éxito y no expone la contraseña en argv.
+- Smoke test de `wifi` confirmó `status`, `scan` y `connect`; la contraseña también se entrega por stdin a `nmcli --ask`.
+- `diskinfo` se ejecutó y mostró la tarjeta de almacenamiento solicitada.
+- La ISO final fue extraída e inspeccionada: no contiene `network.cgi` ni lógica `dexsta0`; sí contiene campos SSID/contraseña, servicio diferido, `wifi`, `diskinfo` y botón de reinicio.

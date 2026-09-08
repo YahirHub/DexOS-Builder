@@ -236,3 +236,27 @@ También se comprobó en el host físico de pruebas que su Intel `iwlwifi` (`wla
 
 La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada como:
 `/workspace/yah-alpine/out/archive/DexOS-Server-edge-x86_64-pre-hotspotfix-2d470842.iso`.
+
+
+# Instalador web: Wi-Fi opcional y reinicio 2026-09-08
+- La UI web permite buscar y conectar a una red Wi-Fi antes de instalar.
+- El perfil se crea como `DexOS WiFi`, se deja sin vínculo al nombre/MAC Live y el instalador lo copia a `/etc/NetworkManager/system-connections/` del sistema final.
+- El hotspot `Dex-Installer` nunca se baja deliberadamente para conectar. Si hay otro adaptador se usa directamente; si sólo existe la radio del AP se intenta crear `dexsta0` como interfaz managed concurrente. Si el driver rechaza AP+STA, la UI indica usar Ethernet o un segundo adaptador.
+- `network.cgi` fue probado con redes simuladas, SSID con `:` y escenario AP+STA simulado; no ejecutó `connection down Dex-Installer`.
+- `status.cgi` publica `NET\tconnectivity` para mostrar si el Live tiene Internet.
+- Al completar `perform_install`, el instalador crea `/run/dexos-install-complete`; `reboot.cgi` sólo acepta POST después de ese marcador y programa `/sbin/reboot`.
+- El botón `Reiniciar ahora` aparece en la pantalla final. La prueba QEMU obtuvo HTTP 400 antes del marcador, HTTP 200/`REBOOTING` después y el guest llegó a `reboot: Restarting system`.
+- Se añadió regla CSS global `[hidden] { display: none !important; }` y el footer queda oculto durante todo el paso 5, corrigiendo el botón `Continuar` que Tailwind podía volver visible.
+- ISO final de esta revisión: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes, SHA-256 `74dbc2f01b6dc001f3b7005d7ef75bf500af4070e7724f421c5be3fe359cdc29`, APKINDEX 194 paquetes.
+
+
+# Wi-Fi diferido y dashboard de login 2026-09-08
+- Se eliminó del instalador web la conexión Wi-Fi en vivo/AP+STA (`network.cgi`, `dexsta0` y botones de escaneo/conexión). El hotspot `Dex-Installer` queda dedicado al acceso al instalador.
+- El paso inicial ahora pide opcionalmente SSID y contraseña. No se intenta conectar en el Live; esos valores se pasan al instalador y se guardan en el target como Base64 dentro de `/etc/dexos/wifi-firstboot.conf` con modo `0600`.
+- El sistema instalado incluye `/etc/init.d/dexos-wifi-firstboot`, que espera NetworkManager, busca una interfaz Wi-Fi durante hasta 15 s y conecta mediante `nmcli --ask`; si no hay radio o falla la conexión conserva el archivo para reintentar en el siguiente boot. Tras éxito borra el archivo temporal.
+- NetworkManager del sistema instalado depende de `wpa_supplicant` mediante `/etc/conf.d/networkmanager` (`rc_need="wpa_supplicant"`) y el servicio se habilita en `default`.
+- Se instaló `/usr/local/bin/wifi`: `status`, `scan`, `saved`, `connect`, `up`, `disconnect`, `forget`. Las operaciones mutables usan `doas` si el usuario no es root. Las contraseñas no van en argv: se pasan por stdin a `nmcli --ask`.
+- Se instaló `/usr/local/bin/diskinfo` con el dashboard solicitado y `/etc/profile.d/10-dexos-diskinfo.sh` lo ejecuta una vez al abrir una shell interactiva con TTY.
+- El botón `Reiniciar ahora` sigue protegido por `/run/dexos-install-complete` y el footer/Continuar permanece oculto durante el paso de instalación.
+- Validación QEMU: instalación completa con SSID diferido; target con config `0600`, servicio habilitado y scripts presentes. Smoke tests con nmcli simulado validaron primer arranque y herramienta `wifi` sin filtrar contraseña por argv.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes (~707 MiB), SHA-256 `0fb1b37937d6869e27e4d4f2ebfed372db6161058b1884722927f74801671bf7`, APKINDEX 194 paquetes.

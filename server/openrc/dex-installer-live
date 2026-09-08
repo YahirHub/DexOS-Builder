@@ -13,6 +13,7 @@ depend() {
 
 start() {
     ebegin "Starting DexOS graphical installer"
+    rm -f /usr/sbin/setup-alpine
     printf 'root:root\n' | chpasswd || {
         eend 1 "Could not set temporary Live root password"
         return 1

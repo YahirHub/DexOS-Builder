@@ -1,0 +1,125 @@
+#!/bin/sh
+set -eu
+
+PROFILE_PREFIX="DexOS WiFi"
+PENDING=/etc/dexos/wifi-firstboot.conf
+
+usage() {
+    cat <<'USAGE'
+Uso: wifi [comando]
+
+  wifi                 Ver estado actual y conexión activa
+  wifi scan            Buscar redes disponibles
+  wifi saved           Mostrar perfiles Wi-Fi guardados
+  wifi connect [SSID]  Conectarse a una red y guardarla
+  wifi up <perfil>     Activar un perfil guardado
+  wifi disconnect      Desconectar la interfaz Wi-Fi activa
+  wifi forget <perfil> Eliminar un perfil Wi-Fi guardado
+
+Los comandos que modifican la red usan doas automáticamente para usuarios de wheel.
+USAGE
+}
+
+need_nmcli() {
+    command -v nmcli >/dev/null 2>&1 || { echo "ERROR: NetworkManager/nmcli no está disponible." >&2; exit 1; }
+}
+
+as_root() {
+    [ "$(id -u)" -eq 0 ] && return 0
+    command -v doas >/dev/null 2>&1 || { echo "ERROR: este comando necesita root o doas." >&2; exit 1; }
+    exec doas "$0" "$@"
+}
+
+wifi_device() {
+    nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi" && $1!="" {print $1; exit}'
+}
+
+status() {
+    echo "== Wi-Fi =="
+    nmcli -f DEVICE,TYPE,STATE,CONNECTION device status 2>/dev/null | awk 'NR==1 || $2=="wifi"'
+    echo
+    echo "Conexiones Wi-Fi activas:"
+    nmcli -t -f NAME,TYPE connection show --active 2>/dev/null | awk -F: '$2=="802-11-wireless" {print "  " $1}' || true
+    if [ -f "$PENDING" ]; then
+        echo
+        echo "Hay una red pendiente configurada por el instalador; se reintentará en el próximo arranque."
+    fi
+}
+
+scan() {
+    as_root scan
+    nmcli radio wifi on >/dev/null 2>&1 || true
+    nmcli device wifi rescan >/dev/null 2>&1 || true
+    sleep 1
+    nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list
+}
+
+saved() {
+    nmcli -f NAME,TYPE,AUTOCONNECT connection show | awk 'NR==1 || $2=="802-11-wireless"'
+}
+
+connect_network() {
+    as_root connect "$@"
+    ssid=${1:-}
+    if [ -z "$ssid" ]; then
+        printf 'SSID exacto: '
+        IFS= read -r ssid
+    fi
+    [ -n "$ssid" ] || { echo "ERROR: el SSID no puede estar vacío." >&2; exit 1; }
+
+    printf 'Contraseña (Enter si la red es abierta): '
+    stty -echo 2>/dev/null || true
+    IFS= read -r password
+    stty echo 2>/dev/null || true
+    printf '\n'
+
+    dev=$(wifi_device)
+    [ -n "$dev" ] || { unset password; echo "ERROR: no se detectó un adaptador Wi-Fi." >&2; exit 1; }
+    nmcli radio wifi on >/dev/null 2>&1 || true
+
+    name="$PROFILE_PREFIX - $ssid"
+    nmcli connection delete "$name" >/dev/null 2>&1 || true
+    if [ -n "$password" ]; then
+        printf '%s\n' "$password" | nmcli --ask --wait 45 device wifi connect "$ssid" ifname "$dev" name "$name"
+    else
+        nmcli --wait 45 device wifi connect "$ssid" ifname "$dev" name "$name"
+    fi
+    unset password
+    rm -f "$PENDING"
+    echo "Conexión guardada como: $name"
+}
+
+up_profile() {
+    as_root up "$@"
+    [ $# -ge 1 ] || { echo "ERROR: indica el nombre del perfil." >&2; exit 1; }
+    nmcli connection up "$1"
+    rm -f "$PENDING"
+}
+
+disconnect_wifi() {
+    as_root disconnect
+    dev=$(wifi_device)
+    [ -n "$dev" ] || { echo "No se detectó un adaptador Wi-Fi."; exit 0; }
+    nmcli device disconnect "$dev"
+}
+
+forget_profile() {
+    as_root forget "$@"
+    [ $# -ge 1 ] || { echo "ERROR: indica el nombre del perfil." >&2; exit 1; }
+    nmcli connection delete "$1"
+}
+
+need_nmcli
+cmd=${1:-status}
+[ $# -eq 0 ] || shift
+case "$cmd" in
+    status) status ;;
+    scan) scan ;;
+    saved) saved ;;
+    connect) connect_network "$@" ;;
+    up) up_profile "$@" ;;
+    disconnect) disconnect_wifi ;;
+    forget) forget_profile "$@" ;;
+    help|-h|--help) usage ;;
+    *) usage >&2; exit 2 ;;
+esac

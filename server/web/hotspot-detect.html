@@ -1,1 +1,10 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="0;url=/"><title>DexOS Installer</title></head><body><p><a href="/">Abrir DexOS Installer</a></p></body></html>
+#!/bin/sh
+# Captive-portal probe response. Return a real HTTP redirect instead of static
+# HTML so Android/Windows/iOS do not render the probe body as raw source.
+printf 'Status: 302 Found\r\n'
+printf 'Location: http://dex.local/\r\n'
+printf 'Cache-Control: no-store, no-cache, must-revalidate\r\n'
+printf 'Pragma: no-cache\r\n'
+printf 'Content-Type: text/plain; charset=utf-8\r\n'
+printf 'Content-Length: 0\r\n'
+printf '\r\n'

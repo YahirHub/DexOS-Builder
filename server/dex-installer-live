@@ -27,7 +27,7 @@ HOTSPOT=$hotspot
 WIFI_DEVICE=$wifi
 SSID=$SSID
 AP_IP=$AP_IP
-MDNS=dexos-installer.local
+MDNS=dex.local
 REASON=$reason
 EOF
     chmod 0644 "$STATUS"
@@ -57,7 +57,7 @@ start_http() {
     mini_httpd \
         -p 80 \
         -d "$WEBROOT" \
-        -c '**.cgi' \
+        -c '**.cgi|**generate_204|**gen_204|**hotspot-detect.html|**success.html|**connecttest.txt|**ncsi.txt|**check_network_status.txt|**redirect|**canonical.html|**success.txt|**wifistub.html' \
         -u root \
         -i "$HTTP_PID" \
         -T utf-8 \
@@ -99,6 +99,7 @@ start_dnsmasq() {
 interface=$dev
 bind-interfaces
 no-resolv
+local=/#/
 address=/#/$AP_IP
 dhcp-range=10.42.0.20,10.42.0.200,255.255.255.0,1h
 dhcp-option=3,$AP_IP
@@ -257,7 +258,7 @@ start_all() {
     command -v rfkill >/dev/null 2>&1 && rfkill unblock all >>"$LOG" 2>&1 || true
     nmcli radio wifi on >>"$LOG" 2>&1 || true
     start_hotspot_watch
-    log 'Web: http://dexos-installer.local/ · Wi-Fi esperado: Dex-Installer'
+    log 'Web: http://dex.local/ · Wi-Fi esperado: Dex-Installer'
 }
 
 stop_all() {
