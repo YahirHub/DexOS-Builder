@@ -2,6 +2,10 @@
 set -eu
 
 HOSTNAME="${1:-dexos-server}"
+ARGON_ASSET=/work/server/assets/argon-grub-theme
+[ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon de GRUB" >&2; exit 1; }
+[ -f "$ARGON_ASSET/background.png" ] || { echo "Falta background.png del tema Argon" >&2; exit 1; }
+[ -f "$ARGON_ASSET/LICENCE.txt" ] || { echo "Falta LICENCE.txt del tema Argon" >&2; exit 1; }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 # The archive contains `.` itself. mktemp creates it as 0700; if preserved,
@@ -20,7 +24,8 @@ mkdir -p \
   "$tmp/etc/runlevels/shutdown" \
   "$tmp/etc/profile.d" \
   "$tmp/usr/local/sbin" \
-  "$tmp/usr/share/dexos"
+  "$tmp/usr/share/dexos/grub.d" \
+  "$tmp/usr/share/dexos/argon-grub-theme"
 
 printf '%s\n' "$HOSTNAME" > "$tmp/etc/hostname"
 cat > "$tmp/etc/hosts" <<EOF
@@ -72,6 +77,7 @@ EOF
 cp /work/server/live-world.txt "$tmp/etc/apk/world"
 sed -i -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$tmp/etc/apk/world"
 cp /work/server/packages.txt "$tmp/usr/share/dexos/server-packages.txt"
+cp -a "$ARGON_ASSET/." "$tmp/usr/share/dexos/argon-grub-theme/"
 
 cat > "$tmp/etc/motd" <<'EOF'
 DexOS Server
@@ -115,7 +121,14 @@ EOF
 
 cp /work/server/install "$tmp/usr/local/sbin/install"
 cp /work/server/boot-order "$tmp/usr/local/sbin/boot-order"
-chmod 0755 "$tmp/usr/local/sbin/install" "$tmp/usr/local/sbin/boot-order"
+cp /work/server/grub-update "$tmp/usr/local/sbin/grub-update"
+ln -s grub-update "$tmp/usr/local/sbin/update-grub"
+cp /work/server/grub-other-os "$tmp/usr/share/dexos/grub.d/31_dexos_other_os"
+chmod 0755 \
+  "$tmp/usr/local/sbin/install" \
+  "$tmp/usr/local/sbin/boot-order" \
+  "$tmp/usr/local/sbin/grub-update" \
+  "$tmp/usr/share/dexos/grub.d/31_dexos_other_os"
 
 for svc in devfs dmesg udev udev-trigger udev-settle hwdrivers modloop; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/sysinit/$svc"

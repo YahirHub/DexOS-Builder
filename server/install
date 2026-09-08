@@ -502,7 +502,8 @@ write_target_config() {
     say "Configurando DexOS Server"
     mkdir -p "$TARGET/etc/apk" "$TARGET/etc/ssh/sshd_config.d" "$TARGET/etc/avahi" \
         "$TARGET/etc/doas.d" "$TARGET/etc/NetworkManager/conf.d" \
-        "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin"
+        "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin" \
+        "$TARGET/etc/grub.d"
 
     cat > "$TARGET/etc/apk/repositories" <<EOF
 $ONLINE_MAIN
@@ -533,6 +534,7 @@ DexOS Server
 mDNS: $mdns_name
 Network: nmcli
 Cambiar arranque predeterminado: boot-order
+Regenerar GRUB y detectar otros SO: grub-update
 EOF
     cat > "$TARGET/etc/ssh/sshd_config.d/10-dexos-server.conf" <<EOF
 PasswordAuthentication yes
@@ -619,6 +621,26 @@ EOF
         cp /usr/local/sbin/boot-order "$TARGET/usr/local/sbin/boot-order"
         chmod 0755 "$TARGET/usr/local/sbin/boot-order"
     fi
+    [ -x /usr/local/sbin/grub-update ] || die "Falta grub-update en el Live."
+    [ -x /usr/share/dexos/grub.d/31_dexos_other_os ] || die "Falta el detector GRUB de otros sistemas."
+    cp /usr/local/sbin/grub-update "$TARGET/usr/local/sbin/grub-update"
+    ln -sf grub-update "$TARGET/usr/local/sbin/update-grub"
+    cp /usr/share/dexos/grub.d/31_dexos_other_os "$TARGET/etc/grub.d/31_dexos_other_os"
+    chmod 0755 "$TARGET/usr/local/sbin/grub-update" "$TARGET/etc/grub.d/31_dexos_other_os"
+}
+
+install_grub_theme() {
+    src=/usr/share/dexos/argon-grub-theme
+    [ -f "$src/theme.txt" ] || die "Falta el tema Argon de GRUB en el medio Live."
+    [ -f "$src/background.png" ] || die "Falta el fondo del tema Argon de GRUB."
+    [ -f "$src/LICENCE.txt" ] || die "Falta la licencia del tema Argon de GRUB."
+
+    dst="$TARGET/boot/grub/themes/argon"
+    rm -rf "$dst"
+    mkdir -p "$dst"
+    cp -a "$src/." "$dst/"
+    [ -f "$dst/theme.txt" ] || die "No se pudo instalar el tema Argon de GRUB."
+    [ -f "$dst/background.png" ] || die "No se pudo instalar el fondo Argon de GRUB."
 }
 
 configure_boot() {
@@ -681,14 +703,21 @@ EOF
     fi
     [ "$bios_ok" -eq 1 ] || [ "$efi_ok" -eq 1 ] || die "No se instaló ningún cargador de arranque."
 
+    say "Instalando tema Argon de GRUB"
+    install_grub_theme
+
     cat > "$TARGET/etc/default/grub" <<EOF
-GRUB_TIMEOUT=5
+GRUB_TIMEOUT=8
 GRUB_DEFAULT=saved
 GRUB_SAVEDEFAULT=false
 GRUB_DISABLE_SUBMENU=y
 GRUB_DISABLE_RECOVERY=true
 GRUB_DISTRIBUTOR="DexOS Server"
+GRUB_DISABLE_LINUX_UUID=false
 GRUB_DISABLE_OS_PROBER=false
+GRUB_THEME="/boot/grub/themes/argon/theme.txt"
+GRUB_GFXMODE="1920x1080,auto"
+GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_CMDLINE_LINUX="root=UUID=$root_uuid rootfstype=ext4"
 GRUB_CMDLINE_LINUX_DEFAULT="quiet"
 EOF
@@ -703,7 +732,7 @@ EOF
             echo "No se detectaron otros sistemas operativos."
         fi
     fi
-    chroot "$TARGET" /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
+    chroot "$TARGET" /usr/local/sbin/grub-update
     grep -Fq "root=UUID=$root_uuid" "$TARGET/boot/grub/grub.cfg" \
         || die "GRUB no quedó configurado con el UUID de la raíz."
     chroot "$TARGET" /usr/sbin/grub-set-default 0 >/dev/null 2>&1 || true
@@ -774,7 +803,8 @@ EOF
     echo
     echo "DexOS Server se instaló correctamente."
     echo "Nombre mDNS: $mdns_name"
-    echo "Después de arrancar puedes cambiar el sistema predeterminado con: boot-order"
+    echo "Después de arrancar puedes regenerar la detección de otros SO con: grub-update"
+    echo "Puedes cambiar el sistema predeterminado con: boot-order"
     echo "Retira el medio Live y reinicia."
 }
 

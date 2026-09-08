@@ -115,3 +115,72 @@ Se arrancó la ISO corregida desde cero en QEMU/KVM con `-nic user,model=virtio-
 - SHA-256: `aab605a18285d3dccb9d421917b88154477dd599427401705930dc0752a58c1a`
 - APKINDEX interno: 176 paquetes.
 - Sigue sin Xorg, XFCE, LightDM, Firefox, Mesa, audio, Bluetooth ni firmware de GPU.
+
+# GRUB robusto + tema Argon del DexOS de escritorio — 2026-09-08
+
+## Problema reproducido
+En una instalación real de coexistencia, el GRUB de DexOS podía terminar mostrando únicamente DexOS aunque hubiese otro sistema operativo en el disco. `GRUB_DISABLE_OS_PROBER=false` y el paquete `os-prober` ya estaban presentes, pero eso no garantiza una entrada útil: `os-prober` usa heurísticas y en algunos layouts reconoce una raíz de forma incompleta o no obtiene un kernel/cargador utilizable para `30_os-prober`.
+
+## Detección de otros sistemas
+Se mantiene `os-prober` como detector principal y se añadió `/etc/grub.d/31_dexos_other_os` como segunda capa propia de DexOS.
+
+El fallback:
+- inspecciona particiones ajenas en solo lectura; ext2/3/4 se monta con `ro,noload`;
+- evita duplicar un Linux cuando `os-prober` + `linux-boot-prober` ya producen una entrada válida;
+- reutiliza el `grub.cfg` del Linux externo mediante `configfile` cuando existe;
+- si no existe un GRUB externo, detecta kernel/initramfs y genera una entrada por UUID;
+- contempla `/boot` separado y `subvol=`/`subvolid=` de la raíz;
+- detecta cargadores UEFI, incluido `EFI/Microsoft/Boot/bootmgfw.efi`, y genera `chainloader` por UUID;
+- conserva el contenido de la ESP y las particiones de los otros sistemas.
+
+Se añadió `/usr/local/sbin/grub-update` y el alias `/usr/local/sbin/update-grub`. El comando genera primero un `grub.cfg` temporal, lo valida con `grub-script-check` y sólo después publica `/boot/grub/grub.cfg`.
+
+## Tema GRUB reutilizado desde DexOS de escritorio
+A petición del proyecto se revisó el sandbox anterior del DexOS gráfico y se identificó el GRUB personalizado documentado allí: el tema **Argon**.
+
+Se portó de forma literal el directorio de assets del proyecto gráfico a:
+- fuente Server: `server/assets/argon-grub-theme/`;
+- Live: `/usr/share/dexos/argon-grub-theme/`;
+- sistema instalado: `/boot/grub/themes/argon/`.
+
+El tema contiene 92 archivos: `theme.txt`, `background.png`, `LICENCE.txt`, fuentes Terminus y los iconos de sistemas operativos. Los tres hashes principales son:
+- `theme.txt`: `8a6b6ab98ee189fbab809e3f105f6efb320157732c028068c5170be74376ffed`;
+- `background.png`: `772f3ff45c450987557a308256bbd05c584af15fcb50942351a2fec34200d126`;
+- `LICENCE.txt`: `3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`.
+
+Se reprodujo el contrato visual del instalador gráfico:
+```text
+GRUB_TIMEOUT=8
+GRUB_THEME="/boot/grub/themes/argon/theme.txt"
+GRUB_GFXMODE="1920x1080,auto"
+GRUB_GFXPAYLOAD_LINUX=keep
+```
+
+Se conservan además las decisiones de DexOS Server (`GRUB_DEFAULT=saved`, raíz por UUID, `GRUB_DISABLE_OS_PROBER=false`, `boot-order` y el fallback de detección). No se copiaron los parámetros de splash/XFCE del sistema gráfico porque no pertenecen a la edición Server.
+
+## Validación QEMU/KVM
+Se arrancó la ISO resultante sin red y se instaló en modo coexistencia sobre un disco de 8 GiB con:
+- `vda1`: ESP FAT32 compartida;
+- `vda2`: otro Alpine/Linux con kernel, initramfs y GRUB;
+- `vda3`: destino DexOS Server.
+
+Resultado:
+- instalación offline de 176 APK completada;
+- salida explícita `Found theme: /boot/grub/themes/argon/theme.txt` durante `grub-update`;
+- 92 assets Argon copiados al sistema instalado y hashes idénticos al origen;
+- `grub.cfg` contiene `set gfxmode=1920x1080,auto`, las dos fuentes Terminus y `set theme=($root)/boot/grub/themes/argon/theme.txt`;
+- el otro Linux aparece en GRUB;
+- el fallback UEFI de Windows fue generado en la prueba sintética correspondiente;
+- `grub-script-check` finalizó con código 0;
+- el `grub.cfg` del otro Linux y el marcador de la ESP compartida permanecieron intactos.
+
+También se validaron por separado los fallbacks de Linux cuando se fuerza a `os-prober` a fallar: primero mediante `configfile` del GRUB externo y, sin ese archivo, mediante kernel/initramfs y `root=UUID=...`.
+
+## ISO actual con Argon y detección robusta
+- Ruta: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
+- Tamaño: `497025024` bytes (~474 MiB)
+- SHA-256: `2decb0ed6b5da72bf26dd8fd62f95e71bf82408b65048d8684f22926509bf473`
+- APKINDEX offline: 176 paquetes.
+
+La ISO inmediatamente anterior, con la corrección de detección de otros SO pero sin Argon, se conservó para comparación en:
+`/workspace/yah-alpine/out/archive/DexOS-Server-edge-x86_64-pre-argon-d07930ad.iso`.

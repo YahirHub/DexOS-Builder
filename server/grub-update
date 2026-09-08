@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v doas >/dev/null 2>&1; then
+        exec doas "$0" "$@"
+    fi
+    echo 'ERROR: grub-update necesita privilegios root.' >&2
+    exit 1
+fi
+
+[ "$#" -eq 0 ] || {
+    echo 'Uso: grub-update' >&2
+    exit 2
+}
+
+command -v grub-mkconfig >/dev/null 2>&1 || {
+    echo 'ERROR: grub-mkconfig no está instalado.' >&2
+    exit 1
+}
+
+mkdir -p /boot/grub
+tmp="/boot/grub/.grub.cfg.dexos.$$"
+cleanup() { rm -f "$tmp" >/dev/null 2>&1 || true; }
+trap cleanup EXIT HUP INT TERM
+
+printf '%s\n' 'Buscando sistemas operativos y regenerando GRUB...'
+grub-mkconfig -o "$tmp"
+if command -v grub-script-check >/dev/null 2>&1; then
+    grub-script-check "$tmp" || {
+        echo 'ERROR: la configuración GRUB generada no pasó la validación; se conserva la anterior.' >&2
+        exit 1
+    }
+fi
+mv "$tmp" /boot/grub/grub.cfg
+trap - EXIT HUP INT TERM
+printf '%s\n' 'GRUB actualizado: /boot/grub/grub.cfg'
