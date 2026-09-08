@@ -82,3 +82,36 @@ La partición Linux sintética no fue detectada por os-prober porque no contení
 - SHA-256: `b8e2ad3c9e52794b713c3aeb18b6a886dad69b0250865ab4a341a47d9beb3d44`
 - APKINDEX interno: 170 paquetes.
 - Verificado sin Xorg, XFCE, LightDM, Firefox, Mesa, audio, Bluetooth ni firmware de GPU.
+
+
+# Corrección de red y DNS 2026-09-08
+Tras arrancar una instalación real con una NIC VirtIO/NAT se detectó que los repositorios APK estaban correctamente configurados, pero el sistema no tenía `/etc/resolv.conf` y NetworkManager mostraba `eth0` como `unmanaged` con motivo 71: `The device is unmanaged because the link is not initialized by udev`.
+
+## Causa raíz
+El Live y el sistema instalado usaban BusyBox `mdev` como gestor de dispositivos. NetworkManager 1.58 en Alpine edge necesita que las interfaces hayan pasado por udev/eudev para gestionarlas correctamente. Sin coldplug de udev no obtenía DHCP y, por tanto, tampoco generaba DNS.
+
+## Solución
+- Se añadieron `eudev` y `eudev-openrc` al Live, al sistema instalado y al repositorio offline.
+- En `sysinit` se sustituyó `mdev` por `udev`, `udev-trigger` y `udev-settle`; se mantiene `hwdrivers` y `modloop`.
+- Se añadió `udev-postmount` al runlevel `default`.
+- NetworkManager usa un archivo `10-dexos-network.conf` con `plugins=keyfile`, `rc-manager=file`, `dns=default` e `ifupdown managed=true`.
+- Se crea un perfil `DexOS Wired` autoconnect con IPv4/IPv6 DHCP automático, tanto en Live como en el sistema instalado.
+- `/etc/resolv.conf` incluye fallback `1.1.1.1` y `8.8.8.8`; cuando hay DHCP/Wi-Fi NetworkManager lo reemplaza con el DNS real de la conexión.
+- Los perfiles Wi-Fi creados durante el Live siguen copiándose al sistema instalado.
+
+## Validación real
+Se arrancó la ISO corregida desde cero en QEMU/KVM con `-nic user,model=virtio-net-pci`, sin ejecutar `udhcpc` ni comandos de reparación manual. Resultado:
+- `eth0`: `connected`, conexión `DexOS Wired`.
+- IPv4: `10.0.2.15/24`, obtenida dinámicamente.
+- Gateway: `10.0.2.2`.
+- `/etc/resolv.conf` fue generado por NetworkManager con `nameserver 10.0.2.3`.
+- Ping a `1.1.1.1`: correcto.
+- Resolución y ping de `dl-cdn.alpinelinux.org`: correctos.
+- `apk update`: correcto, `APK_UPDATE_RC=0`, repositorios edge main/community accesibles.
+
+## ISO actual después de la corrección
+- `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
+- Aproximadamente 474 MiB.
+- SHA-256: `aab605a18285d3dccb9d421917b88154477dd599427401705930dc0752a58c1a`
+- APKINDEX interno: 176 paquetes.
+- Sigue sin Xorg, XFCE, LightDM, Firefox, Mesa, audio, Bluetooth ni firmware de GPU.

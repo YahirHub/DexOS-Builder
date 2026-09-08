@@ -16,7 +16,7 @@ profile_dexserver() {
     syslinux_prompt=0
     apks="alpine-base alpine-conf busybox-extras ca-certificates tzdata doas \
         openssh openssh-server openssh-client openssl kbd-bkeymaps \
-        avahi avahi-openrc dbus dbus-openrc \
+        avahi avahi-openrc dbus dbus-openrc eudev eudev-openrc \
         networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli \
         wpa_supplicant iw wireless-regdb \
         linux-firmware-realtek linux-firmware-rtlwifi linux-firmware-rtw88 linux-firmware-rtw89 \

@@ -30,3 +30,17 @@ Completada el 2026-09-08.
 - Ruta: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
 - Tamaño: ~473 MiB
 - SHA-256: `b8e2ad3c9e52794b713c3aeb18b6a886dad69b0250865ab4a341a47d9beb3d44`
+
+
+# Validación posterior: red y DNS
+- Se detectó y corrigió que NetworkManager no gestionaba interfaces creadas por `mdev` (`reason 71: link is not initialized by udev`).
+- Live e instalado usan ahora eudev con `udev-trigger`/`udev-settle` para coldplug.
+- Existe un perfil Ethernet DHCP automático `DexOS Wired`.
+- NetworkManager gestiona `/etc/resolv.conf`; existe además fallback DNS 1.1.1.1/8.8.8.8.
+- Prueba real desde Live nuevo con QEMU NAT, sin comandos manuales: `eth0 connected`, DHCP `10.0.2.15`, DNS `10.0.2.3`, resolución de `dl-cdn.alpinelinux.org` correcta y `apk update` terminó con `APK_UPDATE_RC=0`.
+- Repositorio offline final: 176 APK.
+
+# ISO actualizada
+- Ruta: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
+- Tamaño: ~474 MiB
+- SHA-256: `aab605a18285d3dccb9d421917b88154477dd599427401705930dc0752a58c1a`

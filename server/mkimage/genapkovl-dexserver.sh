@@ -11,6 +11,7 @@ chmod 0755 "$tmp"
 mkdir -p \
   "$tmp/etc/ssh/sshd_config.d" \
   "$tmp/etc/avahi" \
+  "$tmp/etc/NetworkManager/conf.d" \
   "$tmp/etc/NetworkManager/system-connections" \
   "$tmp/etc/apk" \
   "$tmp/etc/runlevels/sysinit" \
@@ -30,6 +31,40 @@ EOF
 cat > "$tmp/etc/apk/repositories" <<'EOF'
 https://dl-cdn.alpinelinux.org/alpine/edge/main
 https://dl-cdn.alpinelinux.org/alpine/edge/community
+EOF
+cat > "$tmp/etc/NetworkManager/conf.d/10-dexos-network.conf" <<'EOF'
+[main]
+plugins=keyfile
+rc-manager=file
+dns=default
+
+[ifupdown]
+managed=true
+EOF
+cat > "$tmp/etc/NetworkManager/system-connections/dexos-wired.nmconnection" <<'EOF'
+[connection]
+id=DexOS Wired
+uuid=7ef3663e-bd07-4eb2-8cd6-2be94a6a6391
+type=ethernet
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+addr-gen-mode=default
+
+[proxy]
+EOF
+chmod 0600 "$tmp/etc/NetworkManager/system-connections/dexos-wired.nmconnection"
+cat > "$tmp/etc/resolv.conf" <<'EOF'
+# Fallback DNS; NetworkManager replaces this after DHCP/Wi-Fi connects.
+nameserver 1.1.1.1
+nameserver 8.8.8.8
 EOF
 
 # Packages in the ISO repository are not automatically installed in the Live.
@@ -82,10 +117,10 @@ cp /work/server/install "$tmp/usr/local/sbin/install"
 cp /work/server/boot-order "$tmp/usr/local/sbin/boot-order"
 chmod 0755 "$tmp/usr/local/sbin/install" "$tmp/usr/local/sbin/boot-order"
 
-for svc in devfs dmesg mdev hwdrivers modloop; do
+for svc in devfs dmesg udev udev-trigger udev-settle hwdrivers modloop; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/sysinit/$svc"
 done
-for svc in dbus networkmanager sshd avahi-daemon; do
+for svc in dbus networkmanager sshd avahi-daemon udev-postmount; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/default/$svc"
 done
 for svc in hostname modules sysctl bootmisc syslog; do

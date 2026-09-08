@@ -23,7 +23,7 @@ for file in "$LIVE_WORLD" "$TARGET_PACKAGES"; do
     [ -s "$file" ] || fail "lista vacía: $file"
 done
 
-for pkg in networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli openssh avahi avahi-openrc dbus dbus-openrc wpa_supplicant iw wireless-regdb; do
+for pkg in networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli eudev eudev-openrc openssh avahi avahi-openrc dbus dbus-openrc wpa_supplicant iw wireless-regdb; do
     grep -qx "$pkg" "$LIVE_WORLD" || fail "$pkg falta en Live world"
     grep -qx "$pkg" "$TARGET_PACKAGES" || fail "$pkg falta en sistema instalado"
 done
@@ -52,7 +52,10 @@ grep -Fq 'chmod 0755 "$tmp"' "$OVERLAY" || fail "el apkovl dejaría la raíz Liv
 grep -Fq 'cp /work/server/live-world.txt "$tmp/etc/apk/world"' "$OVERLAY" || fail "overlay no instala /etc/apk/world"
 grep -Fq 'cp /work/server/install "$tmp/usr/local/sbin/install"' "$OVERLAY" || fail "overlay no instala el comando install"
 grep -Fq 'cp /work/server/boot-order "$tmp/usr/local/sbin/boot-order"' "$OVERLAY" || fail "overlay no instala boot-order"
-grep -Fq 'networkmanager sshd avahi-daemon' "$OVERLAY" || fail "servicios Server no habilitados en Live"
+grep -Fq 'udev udev-trigger udev-settle' "$OVERLAY" || fail "coldplug udev no habilitado en Live"
+grep -Fq 'networkmanager sshd avahi-daemon udev-postmount' "$OVERLAY" || fail "servicios Server no habilitados en Live"
+grep -Fq 'rc-manager=file' "$OVERLAY" || fail "NetworkManager Live no administra resolv.conf"
+grep -Fq 'dexos-wired.nmconnection' "$OVERLAY" || fail "Live no tiene Ethernet DHCP automático"
 grep -Fq 'https://dl-cdn.alpinelinux.org/alpine/edge/main' "$OVERLAY" || fail "repositorio main falta en Live"
 grep -Fq 'https://dl-cdn.alpinelinux.org/alpine/edge/community' "$OVERLAY" || fail "repositorio community falta en Live"
 pass "overlay Live"
@@ -62,7 +65,10 @@ grep -Fq 'apk add --root "$TARGET"' "$INSTALLER" || fail "instalación apk --roo
 grep -Fq -- '--no-network --repositories-file /dev/null' "$INSTALLER" || fail "instalación no aísla los repositorios online"
 grep -Fq -- '--repository "$repo"' "$INSTALLER" || fail "instalación no usa el repositorio de la ISO"
 grep -Fq 'nmcli device wifi connect' "$INSTALLER" || fail "asistente Wi-Fi no usa nmcli"
-grep -Fq 'networkmanager sshd avahi-daemon' "$INSTALLER" || fail "servicios instalados no configurados"
+grep -Fq 'udev udev-trigger udev-settle' "$INSTALLER" || fail "coldplug udev no configurado en sistema instalado"
+grep -Fq 'networkmanager sshd avahi-daemon udev-postmount' "$INSTALLER" || fail "servicios instalados no configurados"
+grep -Fq 'rc-manager=file' "$INSTALLER" || fail "NetworkManager instalado no administra resolv.conf"
+grep -Fq 'dexos-wired.nmconnection' "$INSTALLER" || fail "sistema instalado no tiene Ethernet DHCP automático"
 grep -Fq '/etc/apk/repositories' "$INSTALLER" || fail "repositorios instalados no configurados"
 grep -Fq '/sbin/mkinitfs' "$INSTALLER" || fail "initramfs no se genera explícitamente"
 grep -Fq 'root=UUID=$root_uuid' "$INSTALLER" || fail "GRUB no fija root por UUID"

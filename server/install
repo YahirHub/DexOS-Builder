@@ -81,7 +81,7 @@ packages() {
 
 require_cmds() {
     missing=''
-    for cmd in apk lsblk sfdisk blockdev partx wipefs mkfs.vfat mkfs.ext4 mount umount chroot blkid grub-install nmcli rc-service findmnt mknod modprobe; do
+    for cmd in apk lsblk sfdisk blockdev partx wipefs mkfs.vfat mkfs.ext4 mount umount chroot blkid grub-install nmcli rc-service findmnt mknod modprobe uuidgen; do
         command -v "$cmd" >/dev/null 2>&1 || missing="$missing $cmd"
     done
     [ -z "$missing" ] || die "Faltan herramientas del Live:$missing"
@@ -501,7 +501,8 @@ install_offline_packages() {
 write_target_config() {
     say "Configurando DexOS Server"
     mkdir -p "$TARGET/etc/apk" "$TARGET/etc/ssh/sshd_config.d" "$TARGET/etc/avahi" \
-        "$TARGET/etc/doas.d" "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin"
+        "$TARGET/etc/doas.d" "$TARGET/etc/NetworkManager/conf.d" \
+        "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin"
 
     cat > "$TARGET/etc/apk/repositories" <<EOF
 $ONLINE_MAIN
@@ -556,7 +557,21 @@ permit persist :wheel
 EOF
     chmod 0600 "$TARGET/etc/doas.d/10-wheel.conf"
 
-    [ -e /etc/resolv.conf ] && cp -L /etc/resolv.conf "$TARGET/etc/resolv.conf" || true
+    cat > "$TARGET/etc/NetworkManager/conf.d/10-dexos-network.conf" <<'EOF'
+[main]
+plugins=keyfile
+rc-manager=file
+dns=default
+
+[ifupdown]
+managed=true
+EOF
+    cat > "$TARGET/etc/resolv.conf" <<'EOF'
+# Fallback DNS; NetworkManager replaces this after DHCP/Wi-Fi connects.
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+EOF
+
     chroot "$TARGET" /usr/sbin/adduser -D -s /bin/ash "$admin_user"
     chroot "$TARGET" /usr/sbin/addgroup "$admin_user" wheel >/dev/null 2>&1 || true
     chroot "$TARGET" /usr/sbin/addgroup "$admin_user" plugdev >/dev/null 2>&1 || true
@@ -565,7 +580,11 @@ EOF
     unset admin_password root_password
 
     chroot "$TARGET" /usr/bin/ssh-keygen -A >/dev/null 2>&1 || true
-    for svc in dbus networkmanager sshd avahi-daemon; do
+    chroot "$TARGET" /sbin/rc-update del mdev sysinit >/dev/null 2>&1 || true
+    for svc in udev udev-trigger udev-settle; do
+        chroot "$TARGET" /sbin/rc-update add "$svc" sysinit >/dev/null 2>&1 || true
+    done
+    for svc in dbus networkmanager sshd avahi-daemon udev-postmount; do
         chroot "$TARGET" /sbin/rc-update add "$svc" default >/dev/null 2>&1 || true
     done
     chroot "$TARGET" /sbin/rc-update del networking default >/dev/null 2>&1 || true
@@ -574,8 +593,28 @@ EOF
 
     if [ -d /etc/NetworkManager/system-connections ]; then
         cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
-        chmod 0600 "$TARGET"/etc/NetworkManager/system-connections/* 2>/dev/null || true
     fi
+    wired_uuid=$(uuidgen)
+    cat > "$TARGET/etc/NetworkManager/system-connections/dexos-wired.nmconnection" <<EOF
+[connection]
+id=DexOS Wired
+uuid=$wired_uuid
+type=ethernet
+autoconnect=true
+autoconnect-priority=100
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+addr-gen-mode=default
+
+[proxy]
+EOF
+    chmod 0600 "$TARGET"/etc/NetworkManager/system-connections/* 2>/dev/null || true
     if [ -x /usr/local/sbin/boot-order ]; then
         cp /usr/local/sbin/boot-order "$TARGET/usr/local/sbin/boot-order"
         chmod 0755 "$TARGET/usr/local/sbin/boot-order"
