@@ -1,0 +1,224 @@
+#!/bin/sh
+set -eu
+
+TARGET=/mnt/dexos-target
+ONLINE_MAIN=https://dl-cdn.alpinelinux.org/alpine/edge/main
+ONLINE_COMMUNITY=https://dl-cdn.alpinelinux.org/alpine/edge/community
+
+say(){ printf '\n==> %s\n' "$*"; }
+die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+ask(){ printf '%s' "$1"; IFS= read -r REPLY; }
+secret(){ printf '%s' "$1"; stty -echo 2>/dev/null || true; IFS= read -r REPLY; stty echo 2>/dev/null || true; printf '\n'; }
+confirm(){ printf '%s [y/N]: ' "$1"; IFS= read -r a; case "$a" in y|Y|yes|YES|s|S|si|SI) return 0;; *) return 1;; esac; }
+
+[ "$(id -u)" -eq 0 ] || die "Ejecuta install como root."
+
+find_repo(){
+  for p in /media/*/apks/x86_64 /media/*/*/apks/x86_64 /run/media/*/apks/x86_64; do
+    [ -f "$p/APKINDEX.tar.gz" ] && { printf '%s\n' "$p"; return 0; }
+  done
+  return 1
+}
+
+wifi_assistant(){
+  command -v nmcli >/dev/null 2>&1 || die "nmcli no está instalado en el Live."
+  say "Conexión de red"
+  nmcli radio wifi on >/dev/null 2>&1 || true
+  nmcli device status || true
+  if ! nmcli -t -f DEVICE,TYPE device | grep -q ':wifi$'; then
+    echo "No se detectó adaptador Wi-Fi. Puedes continuar por Ethernet o sin Internet."
+    return 0
+  fi
+  nmcli device wifi rescan >/dev/null 2>&1 || true
+  echo
+  nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list || true
+  echo
+  ask "SSID (vacío para omitir): "
+  ssid=$REPLY
+  [ -n "$ssid" ] || return 0
+  secret "Contraseña Wi-Fi: "
+  pass=$REPLY
+  if [ -n "$pass" ]; then
+    nmcli device wifi connect "$ssid" password "$pass"
+  else
+    nmcli device wifi connect "$ssid"
+  fi
+  nmcli -f GENERAL.STATE,GENERAL.CONNECTION device show | sed -n '1,12p' || true
+}
+
+choose_disk(){
+  say "Discos disponibles"
+  lsblk -d -o NAME,SIZE,MODEL,TYPE | sed -n '1,80p'
+  echo
+  ask "Disco destino completo (ej. /dev/sda o /dev/vda): "
+  disk=$REPLY
+  [ -b "$disk" ] || die "No existe $disk"
+  case "$(lsblk -dn -o TYPE "$disk" 2>/dev/null)" in disk) ;; *) die "$disk no es un disco completo";; esac
+  size=$(lsblk -bdn -o SIZE "$disk" 2>/dev/null | tr -d ' ')
+  [ "${size:-0}" -ge 2147483648 ] || die "Se requieren al menos 2 GiB."
+  if findmnt -rn -S "$disk" >/dev/null 2>&1 || lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
+    die "El disco o una partición están montados."
+  fi
+  echo
+  lsblk "$disk"
+  echo
+  confirm "SE BORRARÁ TODO $disk. ¿Continuar?" || exit 0
+  ask "Escribe exactamente BORRAR $disk: "
+  [ "$REPLY" = "BORRAR $disk" ] || die "Confirmación incorrecta."
+}
+
+part_path(){
+  case "$1" in *[0-9]) printf '%sp%s\n' "$1" "$2";; *) printf '%s%s\n' "$1" "$2";; esac
+}
+
+install_system(){
+  repo=$(find_repo) || die "No encontré el repositorio APK de la ISO."
+  say "Repositorio offline: $repo"
+
+  ask "Hostname [dexos-server]: "
+  hostname=${REPLY:-dexos-server}
+  ask "Usuario administrador [admin]: "
+  user=${REPLY:-admin}
+  case "$user" in root|'') die "Usuario inválido";; esac
+  secret "Contraseña de $user: "
+  userpass=$REPLY
+  [ ${#userpass} -ge 8 ] || die "La contraseña debe tener al menos 8 caracteres."
+  secret "Contraseña de root: "
+  rootpass=$REPLY
+  [ ${#rootpass} -ge 8 ] || die "La contraseña root debe tener al menos 8 caracteres."
+  ask "Zona horaria [UTC]: "
+  timezone=${REPLY:-UTC}
+  [ -f "/usr/share/zoneinfo/$timezone" ] || die "Zona horaria inválida: $timezone"
+
+  choose_disk
+  p1=$(part_path "$disk" 1)
+  p2=$(part_path "$disk" 2)
+  p3=$(part_path "$disk" 3)
+
+  say "Particionando $disk"
+  wipefs -a "$disk"
+  sfdisk --wipe always "$disk" <<EOF
+label: gpt
+size=2M, type=21686148-6449-6E6F-744E-656564454649
+size=256M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+EOF
+  blockdev --rereadpt "$disk" 2>/dev/null || true
+  sleep 2
+  [ -b "$p2" ] && [ -b "$p3" ] || die "No aparecieron las particiones."
+  mkfs.vfat -F 32 -n DEXOS_EFI "$p2"
+  mkfs.ext4 -F -L DexOS-Server "$p3"
+
+  rm -rf "$TARGET"
+  mkdir -p "$TARGET" "$TARGET/boot/efi"
+  mount "$p3" "$TARGET"
+  mount "$p2" "$TARGET/boot/efi"
+  trap 'umount -R "$TARGET" 2>/dev/null || true' EXIT INT TERM
+
+  mkdir -p "$TARGET/etc/apk/keys"
+  cp /etc/apk/keys/* "$TARGET/etc/apk/keys/"
+
+  say "Instalando DexOS Server desde la ISO (sin Internet)"
+  apk add --root "$TARGET" --initdb --arch x86_64 --keys-dir /etc/apk/keys --no-network --repository "$repo" \
+    alpine-base alpine-conf busybox-extras ca-certificates tzdata \
+    openssh openssh-server openssh-client openssl kbd-bkeymaps avahi avahi-openrc dbus dbus-openrc \
+    networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli \
+    wpa_supplicant wpa_supplicant-openrc iw wireless-regdb \
+    util-linux e2fsprogs e2fsprogs-extra dosfstools grub grub-bios grub-efi efibootmgr syslinux \
+    linux-lts \
+    linux-firmware-realtek linux-firmware-rtlwifi linux-firmware-rtw88 linux-firmware-rtw89 \
+    linux-firmware-mediatek linux-firmware-ath6k linux-firmware-ath9k_htc linux-firmware-ath10k \
+    linux-firmware-ath11k linux-firmware-ath12k linux-firmware-brcm linux-firmware-cypress \
+    linux-firmware-qca linux-firmware-mwl8k linux-firmware-mwlwifi linux-firmware-libertas \
+    linux-firmware-ti-connectivity linux-firmware-rsi linux-firmware-wfx
+
+  for d in proc sys dev run; do mkdir -p "$TARGET/$d"; mount --rbind "/$d" "$TARGET/$d"; mount --make-rslave "$TARGET/$d"; done
+
+  cat > "$TARGET/etc/apk/repositories" <<EOF
+$ONLINE_MAIN
+$ONLINE_COMMUNITY
+EOF
+  printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
+  ln -sf "/usr/share/zoneinfo/$timezone" "$TARGET/etc/localtime"
+  printf '%s\n' "$timezone" > "$TARGET/etc/timezone"
+  cat > "$TARGET/etc/hosts" <<EOF
+127.0.0.1 localhost localhost.localdomain
+127.0.1.1 $hostname $hostname.localdomain
+::1 localhost localhost.localdomain
+EOF
+  cat > "$TARGET/etc/os-release" <<'EOF'
+NAME="DexOS Server"
+PRETTY_NAME="DexOS Server"
+ID=dexos-server
+ID_LIKE=alpine
+VERSION_ID="edge"
+VERSION="edge"
+EOF
+  cat > "$TARGET/etc/issue" <<'EOF'
+DexOS Server \n (Alpine Linux) \l
+EOF
+  cat > "$TARGET/etc/motd" <<'EOF'
+DexOS Server
+Commands: nmcli, install (Live only), apk, rc-service
+EOF
+  mkdir -p "$TARGET/etc/ssh/sshd_config.d"
+  cat > "$TARGET/etc/ssh/sshd_config.d/10-dexos-server.conf" <<'EOF'
+PasswordAuthentication yes
+PermitRootLogin yes
+PermitEmptyPasswords no
+UseDNS no
+EOF
+
+  chroot "$TARGET" /usr/sbin/adduser -D -s /bin/ash "$user"
+  chroot "$TARGET" /usr/sbin/addgroup "$user" wheel 2>/dev/null || true
+  printf '%s:%s\nroot:%s\n' "$user" "$userpass" "$rootpass" | chroot "$TARGET" /usr/sbin/chpasswd
+
+  for svc in dbus networkmanager sshd avahi-daemon; do chroot "$TARGET" /sbin/rc-update add "$svc" default >/dev/null 2>&1 || true; done
+  chroot "$TARGET" /sbin/rc-update del networking default >/dev/null 2>&1 || true
+  chroot "$TARGET" /sbin/rc-update del dhcpcd default >/dev/null 2>&1 || true
+
+  root_uuid=$(blkid -s UUID -o value "$p3")
+  efi_uuid=$(blkid -s UUID -o value "$p2")
+  cat > "$TARGET/etc/fstab" <<EOF
+UUID=$root_uuid / ext4 defaults,noatime 0 1
+UUID=$efi_uuid /boot/efi vfat umask=0077 0 2
+tmpfs /tmp tmpfs nosuid,nodev 0 0
+EOF
+
+  say "Instalando GRUB"
+  grub-install --boot-directory="$TARGET/boot" --target=i386-pc "$disk" >/dev/null 2>&1 || true
+  grub-install --target=x86_64-efi --efi-directory="$TARGET/boot/efi" --bootloader-id=DexOS --boot-directory="$TARGET/boot" --no-nvram
+  mkdir -p "$TARGET/boot/efi/EFI/BOOT"
+  cp "$TARGET/boot/efi/EFI/DexOS/grubx64.efi" "$TARGET/boot/efi/EFI/BOOT/BOOTX64.EFI"
+  cat > "$TARGET/etc/default/grub" <<'EOF'
+GRUB_TIMEOUT=3
+GRUB_DISABLE_SUBMENU=y
+GRUB_DISABLE_RECOVERY=true
+GRUB_DISTRIBUTOR="DexOS Server"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet"
+EOF
+  chroot "$TARGET" /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
+
+  # Preserve current Wi-Fi profiles if they were created with nmcli in the Live.
+  if [ -d /etc/NetworkManager/system-connections ]; then
+    mkdir -p "$TARGET/etc/NetworkManager/system-connections"
+    cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
+    chmod 600 "$TARGET"/etc/NetworkManager/system-connections/* 2>/dev/null || true
+  fi
+
+  sync
+  umount -R "$TARGET"
+  trap - EXIT INT TERM
+  say "DexOS Server instalado correctamente. Retira la ISO y reinicia."
+}
+
+clear 2>/dev/null || true
+cat <<'EOF'
+=================================
+       DexOS Server Install
+=================================
+Instalador offline propio de DexOS Server.
+La conexión Wi-Fi es opcional para instalar; el medio contiene los paquetes.
+EOF
+wifi_assistant
+install_system

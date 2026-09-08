@@ -1,0 +1,131 @@
+# Tarea
+Corregir la sesión Live XFCE congelada.
+# Criterios de aceptación
+- Sólo eudev como devd.
+- LightDM + usuario live normal.
+- Mouse/teclado interactivos en QEMU.
+- XFCE responde a hover/clic.
+
+## Mejora de arranque 2026-09-05
+- [x] Detectar que el Live instala 570 paquetes (~822 MiB) en RAM antes de OpenRC.
+- [x] Diseñar splash temprano usando fbsplash nativo de Alpine.
+- [x] Alimentar progreso real desde apk-tools `--progress-fd`.
+- [x] Agregar ESC para alternar splash/detalles.
+- [x] Agregar readiness gate antes de mostrar XFCE.
+- [ ] Recompilar initramfs/ISO con el nuevo flujo.
+- [ ] Validar splash, ESC y escritorio interactivo en QEMU.
+
+## DexOS 2026-09-05
+- [x] Corregir repintado completo al volver de logs con ESC.
+- [x] Sustituir transición negra por fondo X11 rojo mate inmediato.
+- [x] Esperar componentes reales de XFCE antes de marcar escritorio listo.
+- [x] Corregir lanzador/privilegios del instalador.
+- [x] Renombrar branding visible a DexOS y usuario Live a `dexos`.
+- [x] Añadir pruebas de regresión para branding, transición, instalador y splash.
+- [ ] Recompilar ISO DexOS.
+- [ ] Probar ESC ida/vuelta, transición sin negro, interacción XFCE e instalador en QEMU.
+
+## Corrección posterior a prueba runtime
+- [x] Diagnosticar `lightdm failed to start` como fallo provocado por timeout síncrono de 20 s.
+- [x] Desacoplar monitor de readiness de XFCE del estado OpenRC de LightDM.
+- [x] Extender monitor a 180 s sin marcar servicio fallido por lentitud.
+- [x] Simplificar instalador con `Terminal=true` y elevación directa del comando autorizado.
+- [x] Cambiar identidad tty/os-release a DexOS y branding del menú de arranque.
+- [x] Actualizar pruebas de regresión.
+- [ ] Recompilar ISO y recrear VM.
+- [ ] Validar escritorio e instalador en runtime.
+
+## Ajuste visual por salida real
+- [x] Detectar que XFCE usa propiedades de fondo por nombre real de monitor.
+- [x] Aplicar wallpaper/tema DexOS dinámicamente a todas las salidas detectadas.
+- [x] Añadir prueba estática del autostart de branding.
+- [x] Optimizar invalidación de cache para evitar recompilar kernel cuando el parche de initramfs no cambia.
+- [ ] Recompilar ISO final y recrear VM.
+- [ ] Validar visualmente fondo rojo e instalador en la ISO final.
+
+## Instalador gráfico propio 2026-09-05
+- [x] Eliminar dependencia funcional de setup-alpine para instalar.
+- [x] Crear asistente GTK3 de disco, timezone, usuario, resumen y progreso.
+- [x] Crear backend root validado con comunicación JSON.
+- [x] Validar y excluir medios/discos montados.
+- [x] Crear esquema GPT BIOS+UEFI y ext4.
+- [x] Instalar sistema offline desde la propia ISO con apk --root.
+- [x] Configurar timezone directamente, usuario, doas, OpenRC, NetworkManager, XFCE y branding.
+- [x] Instalar GRUB BIOS + UEFI con fallback.
+- [x] Añadir pruebas de seguridad y esquema GPT.
+- [ ] Recompilar ISO con python3 + py3-gobject3.
+- [ ] Validar que la GUI abre en el Live.
+- [ ] Realizar instalación completa en disco virtual y arrancar desde ese disco.
+
+## Arranque del sistema instalado 2026-09-05
+- [x] Reproducir fallo de initramfs con `/dev/vda3` ausente.
+- [x] Forzar módulos VirtIO + ext4 en initramfs instalado.
+- [x] Forzar root por UUID en GRUB.
+- [x] Añadir prueba de regresión de `grub.cfg`.
+- [ ] Reempaquetar ISO con backend corregido.
+- [ ] Reinstalar en disco virtual limpio.
+- [ ] Arrancar sin ISO y confirmar login/LightDM/XFCE.
+
+## Wi-Fi y wallpaper 2026-09-06
+- [x] Añadir re-sondeo y desbloqueo Wi-Fi antes de NetworkManager.
+- [x] Incluir herramientas y firmware para Wi-Fi real.
+- [x] Integrar el wallpaper exacto proporcionado por el usuario.
+- [x] Verificar hash idéntico del wallpaper dentro de la ISO.
+- [x] Recompilar ISO con correcciones.
+- [ ] Probar en hardware físico que aparece la interfaz Wi-Fi.
+
+## Root Live y segunda fase Wi-Fi 2026-09-06
+- [x] Permitir `su` sin contraseña desde el usuario Live `dexos`.
+- [x] Mantener contraseña root normal en el sistema instalado.
+- [x] Mover detección Wi-Fi a runlevel boot antes de NetworkManager.
+- [x] Añadir dependencia explícita de NetworkManager respecto a `dexos-wifi-init`.
+- [x] Añadir refresco Wi-Fi después de NetworkManager.
+- [x] Añadir log de diagnóstico `/var/log/dexos-wifi.log`.
+- [ ] Validar en hardware físico el chipset Wi-Fi específico del usuario.
+
+## DexOS v001
+- [x] Corregir `su` del Live sin depender de PAM/BusyBox.
+- [x] Instalar realmente firmware Wi-Fi en el root Live mediante `/etc/apk/world`.
+- [x] Migrar kernel Live a `linux-stable` 7.1.5.
+- [x] Migrar kernel del sistema instalado a `linux-stable`.
+- [x] Generar ISO versionada `DexOS-edge-x86_64-v001.iso`.
+- [x] Verificar dentro de ISO kernel stable, firmware Live, `su` wrapper, servicios Wi-Fi y wallpaper exacto.
+- [ ] Validar v001 en hardware físico del usuario y revisar `/var/log/dexos-wifi.log` si el chipset aún no aparece.
+
+## DexOS v002
+- [x] Revertir kernel stable a LTS por compatibilidad con Ventoy del usuario.
+- [x] Añadir `uas`, `sr-mod` e `isofs` al arranque temprano.
+- [x] Mantener firmware Wi-Fi del Live y `su` sin contraseña.
+- [x] Generar `DexOS-edge-x86_64-v002.iso`.
+- [x] Verificar dentro de la ISO kernel LTS, cmdline Ventoy/USB, firmware Live, `su`, kernel instalado y wallpaper exacto.
+- [ ] Validar v002 en Ventoy físico del usuario.
+
+## DexOS v005
+- [x] Forzar wallpaper DexOS en Live con rutas estándar XFCE.
+- [x] Copiar configuración de xfdesktop al usuario Live antes del primer login.
+- [x] Reaplicar wallpaper a todos los monitores detectados.
+- [x] Añadir cursor Breeze y mostrar cursor antes del selector de idioma.
+- [x] Forzar cursor GDK dentro del selector.
+- [x] Generar y verificar `DexOS-edge-x86_64-v005.iso`.
+- [ ] Validar visualmente v005 en VM/hardware físico.
+
+## DexOS v006
+- [x] Copiar wallpaper/branding al sistema instalado y al usuario creado.
+- [x] Personalizar LightDM del sistema instalado con wallpaper DexOS.
+- [x] Reaplicar tema DexOS al iniciar sesión sin depender sólo de XDG autostart.
+- [x] Corregir confianza del lanzador con `metadata::xfce-exe-checksum`.
+- [x] Añadir diálogo final de instalación con opción de reinicio.
+- [x] Integrar bootsplash en el initramfs del sistema instalado.
+- [x] Generar y verificar `DexOS-edge-x86_64-v006.iso`.
+- [x] Reiniciar VM con QCOW limpio para prueba desde cero.
+- [ ] Validar visualmente el Live, instalar v006 en el QCOW limpio y verificar splash, LightDM y wallpaper del sistema instalado.
+
+## DexOS v007
+- [x] Diagnosticar instalación v006 real desde QCOW.
+- [x] Corregir acceso al DBus real de XFCE al aplicar wallpaper.
+- [x] Reaplicar fondo después de la migración inicial de XFCE.
+- [x] Hacer autocontenido el splash del initramfs instalado.
+- [x] Añadir KMS y applets BusyBox necesarios al initramfs instalado.
+- [x] Generar y verificar `DexOS-edge-x86_64-v007.iso`.
+- [x] Arrancar v007 con QCOW completamente nuevo.
+- [ ] Validar visualmente Live, instalar v007 y confirmar wallpaper + splash del sistema instalado.

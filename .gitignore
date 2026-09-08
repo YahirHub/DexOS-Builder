@@ -1,0 +1,12 @@
+alpine-root/
+aports/
+cache/
+out/
+runtime/
+build-home/
+.venv-vnc/
+*.log
+*.pid
+*.rc
+__pycache__/
+*.pyc
