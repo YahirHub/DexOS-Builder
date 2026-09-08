@@ -14,17 +14,17 @@ profile_dexserver() {
     initrd_ucode="/boot/amd-ucode.img /boot/intel-ucode.img"
     syslinux_timeout=5
     syslinux_prompt=0
-    apks="alpine-base alpine-conf busybox-extras ca-certificates tzdata \
+    apks="alpine-base alpine-conf busybox-extras ca-certificates tzdata doas \
         openssh openssh-server openssh-client openssl kbd-bkeymaps \
         avahi avahi-openrc dbus dbus-openrc \
         networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli \
-        wpa_supplicant wpa_supplicant-openrc iw wireless-regdb \
+        wpa_supplicant iw wireless-regdb \
         linux-firmware-realtek linux-firmware-rtlwifi linux-firmware-rtw88 linux-firmware-rtw89 \
         linux-firmware-mediatek linux-firmware-ath6k linux-firmware-ath9k_htc linux-firmware-ath10k \
         linux-firmware-ath11k linux-firmware-ath12k linux-firmware-brcm linux-firmware-cypress \
         linux-firmware-qca linux-firmware-mwl8k linux-firmware-mwlwifi linux-firmware-libertas \
         linux-firmware-ti-connectivity linux-firmware-rsi linux-firmware-wfx \
-        util-linux e2fsprogs e2fsprogs-extra dosfstools \
-        grub grub-bios grub-efi efibootmgr syslinux \
+        util-linux e2fsprogs dosfstools \
+        grub grub-bios grub-efi efibootmgr os-prober ntfs-3g \
         linux-lts"
 }

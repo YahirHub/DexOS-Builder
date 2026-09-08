@@ -2,151 +2,521 @@
 set -eu
 
 TARGET=/mnt/dexos-target
+PACKAGE_FILE=/usr/share/dexos/server-packages.txt
 ONLINE_MAIN=https://dl-cdn.alpinelinux.org/alpine/edge/main
 ONLINE_COMMUNITY=https://dl-cdn.alpinelinux.org/alpine/edge/community
+MIN_DISK=4294967296
+MIN_ROOT=1073741824
+EFI_GUID=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+BIOS_GUID=21686148-6449-6e6f-744e-656564454649
+MOUNTED=0
+WORK=/tmp/dexos-installer.$$
+mkdir -p "$WORK"
 
-say(){ printf '\n==> %s\n' "$*"; }
-die(){ printf '\nERROR: %s\n' "$*" >&2; exit 1; }
-ask(){ printf '%s' "$1"; IFS= read -r REPLY; }
-secret(){ printf '%s' "$1"; stty -echo 2>/dev/null || true; IFS= read -r REPLY; stty echo 2>/dev/null || true; printf '\n'; }
-confirm(){ printf '%s [y/N]: ' "$1"; IFS= read -r a; case "$a" in y|Y|yes|YES|s|S|si|SI) return 0;; *) return 1;; esac; }
+say() { printf '\n==> %s\n' "$*"; }
+warn() { printf '\nAVISO: %s\n' "$*" >&2; }
+die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
+ask() { printf '%s' "$1"; IFS= read -r REPLY; }
+secret() {
+    printf '%s' "$1"
+    stty -echo 2>/dev/null || true
+    IFS= read -r REPLY
+    stty echo 2>/dev/null || true
+    printf '\n'
+}
+confirm() {
+    printf '%s [s/N]: ' "$1"
+    IFS= read -r answer
+    case "$answer" in s|S|si|SI|sí|Sí|y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+cleanup() {
+    if [ "$MOUNTED" -eq 1 ]; then
+        umount -R "$TARGET" >/dev/null 2>&1 || true
+        MOUNTED=0
+    fi
+    rm -rf "$WORK" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT HUP INT TERM
 
-[ "$(id -u)" -eq 0 ] || die "Ejecuta install como root."
+case "${1:-}" in
+    ''|--wifi|--check|--help|-h) ;;
+    *)
+        if [ -x /usr/bin/install ] && [ "$0" != /usr/bin/install ]; then
+            exec /usr/bin/install "$@"
+        fi
+        die "Opción desconocida: $1"
+        ;;
+esac
 
-find_repo(){
-  for p in /media/*/apks/x86_64 /media/*/*/apks/x86_64 /run/media/*/apks/x86_64; do
-    [ -f "$p/APKINDEX.tar.gz" ] && { printf '%s\n' "$p"; return 0; }
-  done
-  return 1
+if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
+    cat <<'EOF'
+DexOS Server installer
+
+  install          Ejecuta el asistente inteligente de instalación offline.
+  install --wifi   Ejecuta únicamente el asistente de Wi-Fi.
+  install --check  Verifica medio, módulos, paquetes y discos sin modificar nada.
+EOF
+    exit 0
+fi
+
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v doas >/dev/null 2>&1; then exec doas "$0" "$@"; fi
+    die "El instalador necesita privilegios root."
+fi
+
+find_repo() {
+    for arch_repo in /media/*/apks/x86_64 /media/*/*/apks/x86_64 /run/media/*/apks/x86_64; do
+        if [ -f "$arch_repo/APKINDEX.tar.gz" ]; then
+            dirname "$arch_repo"
+            return 0
+        fi
+    done
+    return 1
 }
 
-wifi_assistant(){
-  command -v nmcli >/dev/null 2>&1 || die "nmcli no está instalado en el Live."
-  say "Conexión de red"
-  nmcli radio wifi on >/dev/null 2>&1 || true
-  nmcli device status || true
-  if ! nmcli -t -f DEVICE,TYPE device | grep -q ':wifi$'; then
-    echo "No se detectó adaptador Wi-Fi. Puedes continuar por Ethernet o sin Internet."
-    return 0
-  fi
-  nmcli device wifi rescan >/dev/null 2>&1 || true
-  echo
-  nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list || true
-  echo
-  ask "SSID (vacío para omitir): "
-  ssid=$REPLY
-  [ -n "$ssid" ] || return 0
-  secret "Contraseña Wi-Fi: "
-  pass=$REPLY
-  if [ -n "$pass" ]; then
-    nmcli device wifi connect "$ssid" password "$pass"
-  else
-    nmcli device wifi connect "$ssid"
-  fi
-  nmcli -f GENERAL.STATE,GENERAL.CONNECTION device show | sed -n '1,12p' || true
+packages() {
+    [ -f "$PACKAGE_FILE" ] || die "Falta $PACKAGE_FILE"
+    sed -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$PACKAGE_FILE"
 }
 
-choose_disk(){
-  say "Discos disponibles"
-  lsblk -d -o NAME,SIZE,MODEL,TYPE | sed -n '1,80p'
-  echo
-  ask "Disco destino completo (ej. /dev/sda o /dev/vda): "
-  disk=$REPLY
-  [ -b "$disk" ] || die "No existe $disk"
-  case "$(lsblk -dn -o TYPE "$disk" 2>/dev/null)" in disk) ;; *) die "$disk no es un disco completo";; esac
-  size=$(lsblk -bdn -o SIZE "$disk" 2>/dev/null | tr -d ' ')
-  [ "${size:-0}" -ge 2147483648 ] || die "Se requieren al menos 2 GiB."
-  if findmnt -rn -S "$disk" >/dev/null 2>&1 || lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
-    die "El disco o una partición están montados."
-  fi
-  echo
-  lsblk "$disk"
-  echo
-  confirm "SE BORRARÁ TODO $disk. ¿Continuar?" || exit 0
-  ask "Escribe exactamente BORRAR $disk: "
-  [ "$REPLY" = "BORRAR $disk" ] || die "Confirmación incorrecta."
+require_cmds() {
+    missing=''
+    for cmd in apk lsblk sfdisk blockdev partx wipefs mkfs.vfat mkfs.ext4 mount umount chroot blkid grub-install nmcli rc-service findmnt mknod modprobe; do
+        command -v "$cmd" >/dev/null 2>&1 || missing="$missing $cmd"
+    done
+    [ -z "$missing" ] || die "Faltan herramientas del Live:$missing"
 }
 
-part_path(){
-  case "$1" in *[0-9]) printf '%sp%s\n' "$1" "$2";; *) printf '%s%s\n' "$1" "$2";; esac
+ensure_runtime_modules() {
+    rc-service modloop status >/dev/null 2>&1 || rc-service modloop start >/dev/null 2>&1 || true
+    rc-service hwdrivers status >/dev/null 2>&1 || rc-service hwdrivers start >/dev/null 2>&1 || true
+    modprobe ext4 >/dev/null 2>&1 || die "No se pudo cargar ext4 desde modloop."
+    modprobe vfat >/dev/null 2>&1 || true
 }
 
-install_system(){
-  repo=$(find_repo) || die "No encontré el repositorio APK de la ISO."
-  say "Repositorio offline: $repo"
+ensure_networkmanager() {
+    rc-service dbus status >/dev/null 2>&1 || rc-service dbus start >/dev/null 2>&1 || true
+    rc-service networkmanager status >/dev/null 2>&1 || rc-service networkmanager start >/dev/null 2>&1 || true
+}
 
-  ask "Hostname [dexos-server]: "
-  hostname=${REPLY:-dexos-server}
-  ask "Usuario administrador [admin]: "
-  user=${REPLY:-admin}
-  case "$user" in root|'') die "Usuario inválido";; esac
-  secret "Contraseña de $user: "
-  userpass=$REPLY
-  [ ${#userpass} -ge 8 ] || die "La contraseña debe tener al menos 8 caracteres."
-  secret "Contraseña de root: "
-  rootpass=$REPLY
-  [ ${#rootpass} -ge 8 ] || die "La contraseña root debe tener al menos 8 caracteres."
-  ask "Zona horaria [UTC]: "
-  timezone=${REPLY:-UTC}
-  [ -f "/usr/share/zoneinfo/$timezone" ] || die "Zona horaria inválida: $timezone"
+wifi_assistant() {
+    require_cmds
+    ensure_networkmanager
+    say "Red y Wi-Fi"
+    nmcli -f DEVICE,TYPE,STATE,CONNECTION device status || true
 
-  choose_disk
-  p1=$(part_path "$disk" 1)
-  p2=$(part_path "$disk" 2)
-  p3=$(part_path "$disk" 3)
+    if ! nmcli -t -f DEVICE,TYPE device status 2>/dev/null | grep -q ':wifi$'; then
+        echo "No se detectó adaptador Wi-Fi. Ethernet será gestionado por NetworkManager."
+        return 0
+    fi
 
-  say "Particionando $disk"
-  wipefs -a "$disk"
-  sfdisk --wipe always "$disk" <<EOF
+    nmcli radio wifi on >/dev/null 2>&1 || true
+    nmcli device wifi rescan >/dev/null 2>&1 || true
+    echo
+    nmcli -f IN-USE,SSID,SIGNAL,SECURITY device wifi list || true
+    echo
+    confirm "¿Quieres conectarte a una red Wi-Fi ahora?" || return 0
+    ask "SSID exacto: "
+    ssid=$REPLY
+    [ -n "$ssid" ] || die "El SSID no puede estar vacío."
+    secret "Contraseña Wi-Fi (Enter si es abierta): "
+    wifi_password=$REPLY
+    if [ -n "$wifi_password" ]; then
+        nmcli device wifi connect "$ssid" password "$wifi_password"
+    else
+        nmcli device wifi connect "$ssid"
+    fi
+    unset wifi_password
+    nmcli -f DEVICE,TYPE,STATE,CONNECTION device status || true
+}
+
+preflight() {
+    require_cmds
+    ensure_runtime_modules
+    repo=$(find_repo) || die "No se encontró el repositorio APK offline de DexOS Server."
+    package_words=$(packages | tr '\n' ' ')
+    [ -n "$package_words" ] || die "La lista de paquetes está vacía."
+    say "Verificando repositorio offline"
+    echo "Repositorio: $repo"
+    apk add --simulate --no-network --repositories-file /dev/null \
+        --repository "$repo" $package_words >/dev/null \
+        || die "El repositorio offline no contiene todas las dependencias del sistema instalado."
+}
+
+validate_hostname() {
+    printf '%s\n' "$1" | grep -Eq '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+}
+validate_user() {
+    [ "$1" != root ] && printf '%s\n' "$1" | grep -Eq '^[a-z_][a-z0-9_-]{0,30}$'
+}
+
+normalize_mdns_name() {
+    name=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    name=${name%.}
+    case "$name" in *.local) name=${name%.local} ;; esac
+    validate_hostname "$name" || die "Nombre inválido. Usa letras, números y guiones; .local es opcional."
+    hostname=$name
+    mdns_name=$name.local
+}
+
+collect_identity() {
+    say "Identidad del servidor"
+    ask "Nombre del servidor/mDNS [dexos-server.local]: "
+    normalize_mdns_name "${REPLY:-dexos-server.local}"
+    echo "El servidor se anunciará como: $mdns_name"
+
+    ask "Usuario administrador [admin]: "
+    admin_user=${REPLY:-admin}
+    validate_user "$admin_user" || die "Usuario no válido."
+
+    secret "Contraseña de $admin_user (mínimo 8 caracteres): "
+    admin_password=$REPLY
+    [ ${#admin_password} -ge 8 ] || die "La contraseña debe tener al menos 8 caracteres."
+    case "$admin_password" in *:*) die "La contraseña no puede contener ':'." ;; esac
+    secret "Repite la contraseña de $admin_user: "
+    [ "$REPLY" = "$admin_password" ] || die "Las contraseñas del usuario no coinciden."
+
+    secret "Contraseña de root [Enter = usar la de $admin_user]: "
+    if [ -z "$REPLY" ]; then
+        root_password=$admin_password
+        echo "root usará la misma contraseña que $admin_user."
+    else
+        root_password=$REPLY
+        [ ${#root_password} -ge 8 ] || die "La contraseña root debe tener al menos 8 caracteres."
+        case "$root_password" in *:*) die "La contraseña root no puede contener ':'." ;; esac
+        secret "Repite la contraseña de root: "
+        [ "$REPLY" = "$root_password" ] || die "Las contraseñas root no coinciden."
+    fi
+
+    if confirm "¿Permitir acceso root directamente por SSH?"; then
+        ssh_root_login=yes
+    else
+        ssh_root_login=no
+    fi
+
+    ask "Zona horaria [UTC] (ej. America/Mexico_City): "
+    timezone=${REPLY:-UTC}
+    case "$timezone" in /*|*'..'*) die "Zona horaria no válida." ;; esac
+    [ -f "/usr/share/zoneinfo/$timezone" ] || die "Zona horaria no disponible: $timezone"
+}
+
+installation_media_disk() {
+    repo=$(find_repo 2>/dev/null || true)
+    [ -n "$repo" ] || return 0
+    src=$(findmnt -n -o SOURCE -T "$repo" 2>/dev/null || true)
+    case "$src" in
+        /dev/*)
+            type=$(lsblk -dnro TYPE "$src" 2>/dev/null | tr -d ' ')
+            if [ "$type" = part ]; then
+                pk=$(lsblk -dnro PKNAME "$src" 2>/dev/null | tr -d ' ')
+                [ -n "$pk" ] && printf '/dev/%s\n' "$pk"
+            elif [ "$type" = disk ]; then
+                printf '%s\n' "$src"
+            fi
+            ;;
+    esac
+}
+
+make_disk_list() {
+    file=$1
+    live_disk=$(installation_media_disk || true)
+    : > "$file"
+    lsblk -dnpr -o NAME,TYPE,RO | awk '$2=="disk" && $3==0 {print $1}' | while IFS= read -r dev; do
+        [ -n "$live_disk" ] && [ "$dev" = "$live_disk" ] && continue
+        printf '%s\n' "$dev"
+    done > "$file"
+}
+
+print_disk_menu() {
+    file=$1
+    idx=1
+    while IFS= read -r dev; do
+        meta=$(lsblk -dn -o SIZE,MODEL,TRAN "$dev" 2>/dev/null | sed 's/[[:space:]]*$//')
+        printf ' %d) %-14s %s\n' "$idx" "$dev" "$meta"
+        idx=$((idx + 1))
+    done < "$file"
+}
+
+select_disk() {
+    file="$WORK/disks"
+    make_disk_list "$file"
+    [ -s "$file" ] || die "No hay discos instalables; el medio Live se excluye automáticamente."
+    say "Discos disponibles"
+    print_disk_menu "$file"
+    count=$(wc -l < "$file" | tr -d ' ')
+    while :; do
+        ask "Selecciona el disco [1-$count]: "
+        case "$REPLY" in ''|*[!0-9]*) echo "Selección inválida."; continue ;; esac
+        [ "$REPLY" -ge 1 ] && [ "$REPLY" -le "$count" ] || { echo "Fuera de rango."; continue; }
+        disk=$(sed -n "${REPLY}p" "$file")
+        break
+    done
+}
+
+is_efi_guid() {
+    pt=$(lsblk -dnro PARTTYPE "$1" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    [ "$pt" = "$EFI_GUID" ]
+}
+
+make_root_partition_list() {
+    file=$1
+    : > "$file"
+    lsblk -npr -o NAME,TYPE,RO "$disk" | awk '$2=="part" && $3==0 {print $1}' | while IFS= read -r part; do
+        is_efi_guid "$part" && continue
+        mnt=$(lsblk -dnro MOUNTPOINTS "$part" 2>/dev/null | tr -d ' ')
+        [ -n "$mnt" ] && continue
+        size=$(lsblk -bdnro SIZE "$part" 2>/dev/null | tr -d ' ')
+        [ "${size:-0}" -ge "$MIN_ROOT" ] || continue
+        printf '%s\n' "$part"
+    done > "$file"
+}
+
+print_partition_menu() {
+    file=$1
+    idx=1
+    while IFS= read -r part; do
+        meta=$(lsblk -dn -o SIZE,FSTYPE,LABEL,PARTLABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        printf ' %d) %-16s %s\n' "$idx" "$part" "$meta"
+        idx=$((idx + 1))
+    done < "$file"
+}
+
+select_root_partition() {
+    file="$WORK/root-parts"
+    make_root_partition_list "$file"
+    [ -s "$file" ] || die "No hay particiones raíz utilizables de al menos 1 GiB en $disk."
+    say "Partición para DexOS Server"
+    echo "La partición elegida se formateará como ext4; las demás se conservarán."
+    print_partition_menu "$file"
+    count=$(wc -l < "$file" | tr -d ' ')
+    while :; do
+        ask "Selecciona la partición raíz [1-$count]: "
+        case "$REPLY" in ''|*[!0-9]*) echo "Selección inválida."; continue ;; esac
+        [ "$REPLY" -ge 1 ] && [ "$REPLY" -le "$count" ] || { echo "Fuera de rango."; continue; }
+        root_part=$(sed -n "${REPLY}p" "$file")
+        break
+    done
+}
+
+make_efi_partition_list() {
+    file=$1
+    : > "$file"
+    lsblk -npr -o NAME,TYPE,RO "$disk" | awk '$2=="part" && $3==0 {print $1}' | while IFS= read -r part; do
+        [ "$part" = "$root_part" ] && continue
+        fs=$(lsblk -dnro FSTYPE "$part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        if is_efi_guid "$part" || [ "$fs" = vfat ] || [ "$fs" = fat ] || [ "$fs" = fat32 ]; then
+            printf '%s\n' "$part"
+        fi
+    done > "$file"
+}
+
+select_efi_partition() {
+    file="$WORK/efi-parts"
+    make_efi_partition_list "$file"
+    efi_part=''
+    if [ ! -s "$file" ]; then
+        echo "No se detectó una partición EFI/FAT en $disk."
+        return 0
+    fi
+    say "Partición de arranque EFI"
+    echo "Se reutilizará sin formatearla; los cargadores existentes se conservan."
+    print_partition_menu "$file"
+    echo " 0) Ninguna (solo BIOS si el disco lo permite)"
+    count=$(wc -l < "$file" | tr -d ' ')
+    default=''
+    [ "$count" -eq 1 ] && default=1
+    while :; do
+        if [ -n "$default" ]; then
+            ask "Selecciona la ESP [0-$count, Enter=$default]: "
+            choice=${REPLY:-$default}
+        else
+            ask "Selecciona la ESP [0-$count]: "
+            choice=$REPLY
+        fi
+        case "$choice" in *[!0-9]*|'') echo "Selección inválida."; continue ;; esac
+        [ "$choice" -ge 0 ] && [ "$choice" -le "$count" ] || { echo "Fuera de rango."; continue; }
+        [ "$choice" -eq 0 ] && { efi_part=''; break; }
+        efi_part=$(sed -n "${choice}p" "$file")
+        fs=$(lsblk -dnro FSTYPE "$efi_part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        case "$fs" in vfat|fat|fat32) ;; *) echo "$efi_part no contiene un filesystem FAT utilizable como ESP."; continue ;; esac
+        break
+    done
+}
+
+disk_bios_capable() {
+    pttype=$(blkid -p -s PTTYPE -o value "$disk" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)
+    case "$pttype" in dos|msdos) return 0 ;; esac
+    [ "$pttype" = gpt ] || return 1
+    lsblk -nro PARTTYPE "$disk" 2>/dev/null \
+        | tr '[:upper:]' '[:lower:]' \
+        | tr -d ' ' \
+        | grep -qx "$BIOS_GUID"
+}
+
+validate_boot_plan() {
+    bios_install=0
+    efi_install=0
+    disk_bios_capable && bios_install=1 || true
+    [ -n "${efi_part:-}" ] && efi_install=1
+    if [ -d /sys/firmware/efi ] && [ "$efi_install" -ne 1 ]; then
+        die "El Live arrancó en UEFI; selecciona una partición EFI para garantizar el arranque."
+    fi
+    [ "$bios_install" -eq 1 ] || [ "$efi_install" -eq 1 ] \
+        || die "No hay un destino de arranque válido: falta ESP y el disco no permite GRUB BIOS."
+}
+
+choose_layout() {
+    say "Modo de instalación"
+    echo " 1) Usar un disco completo (borra ese disco)"
+    echo " 2) Coexistir con otro sistema usando particiones existentes"
+    while :; do
+        ask "Selecciona [1-2]: "
+        case "$REPLY" in 1) install_mode=whole; break ;; 2) install_mode=coexist; break ;; *) echo "Elige 1 o 2." ;; esac
+    done
+
+    select_disk
+    if [ "$install_mode" = whole ]; then
+        disk_size=$(lsblk -bdnro SIZE "$disk" 2>/dev/null | tr -d ' ')
+        [ "${disk_size:-0}" -ge "$MIN_DISK" ] || die "DexOS Server requiere un disco de al menos 4 GiB."
+        if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
+            die "$disk contiene una partición montada. Desmóntala o usa modo coexistencia."
+        fi
+        root_part=''
+        efi_part=''
+        bios_install=1
+        efi_install=1
+    else
+        select_root_partition
+        select_efi_partition
+        validate_boot_plan
+    fi
+}
+
+part_path() {
+    case "$1" in *[0-9]) printf '%sp%s\n' "$1" "$2" ;; *) printf '%s%s\n' "$1" "$2" ;; esac
+}
+
+ensure_block_node() {
+    path=$1
+    [ -b "$path" ] && return 0
+    name=${path#/dev/}
+    sysdev="/sys/class/block/$name/dev"
+    if [ -r "$sysdev" ]; then
+        mm=$(cat "$sysdev")
+        major=${mm%%:*}
+        minor=${mm#*:}
+        rm -f "$path" 2>/dev/null || true
+        mknod "$path" b "$major" "$minor" 2>/dev/null || true
+    fi
+    [ -b "$path" ]
+}
+
+refresh_partition_nodes() {
+    sync
+    blockdev --rereadpt "$disk" >/dev/null 2>&1 || true
+    partx -u "$disk" >/dev/null 2>&1 || partx -a "$disk" >/dev/null 2>&1 || true
+    command -v mdev >/dev/null 2>&1 && mdev -s >/dev/null 2>&1 || true
+}
+
+wait_block() {
+    path=$1
+    count=0
+    while [ "$count" -lt 30 ]; do
+        ensure_block_node "$path" && return 0
+        refresh_partition_nodes
+        ensure_block_node "$path" && return 0
+        sleep 1
+        count=$((count + 1))
+    done
+    die "No apareció el dispositivo $path después de actualizar la tabla de particiones."
+}
+
+prepare_storage() {
+    ensure_runtime_modules
+    if [ "$install_mode" = whole ]; then
+        bios_part=$(part_path "$disk" 1)
+        efi_part=$(part_path "$disk" 2)
+        root_part=$(part_path "$disk" 3)
+        say "Creando GPT BIOS + UEFI"
+        wipefs -a "$disk"
+        sfdisk --wipe always --wipe-partitions always "$disk" <<EOF
 label: gpt
-size=2M, type=21686148-6449-6E6F-744E-656564454649
-size=256M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+size=2M, type=$BIOS_GUID
+size=512M, type=$EFI_GUID
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4
 EOF
-  blockdev --rereadpt "$disk" 2>/dev/null || true
-  sleep 2
-  [ -b "$p2" ] && [ -b "$p3" ] || die "No aparecieron las particiones."
-  mkfs.vfat -F 32 -n DEXOS_EFI "$p2"
-  mkfs.ext4 -F -L DexOS-Server "$p3"
+        refresh_partition_nodes
+        wait_block "$bios_part"
+        wait_block "$efi_part"
+        wait_block "$root_part"
+        say "Formateando particiones nuevas"
+        wait_block "$efi_part"
+        mkfs.vfat -F 32 -n DEXOS_EFI "$efi_part"
+        refresh_partition_nodes
+        wait_block "$root_part"
+        mkfs.ext4 -F -L DexOS-Server "$root_part"
+        bios_install=1
+        efi_install=1
+    else
+        say "Preparando la partición raíz seleccionada"
+        echo "Se conservarán todas las demás particiones, incluida: ${efi_part:-ninguna ESP seleccionada}."
+        wait_block "$root_part"
+        wipefs -a "$root_part"
+        wait_block "$root_part"
+        mkfs.ext4 -F -L DexOS-Server "$root_part"
+        wait_block "$root_part"
+    fi
+}
 
-  rm -rf "$TARGET"
-  mkdir -p "$TARGET" "$TARGET/boot/efi"
-  mount "$p3" "$TARGET"
-  mount "$p2" "$TARGET/boot/efi"
-  trap 'umount -R "$TARGET" 2>/dev/null || true' EXIT INT TERM
+mount_target() {
+    umount -R "$TARGET" >/dev/null 2>&1 || true
+    rm -rf "$TARGET"
+    mkdir -p "$TARGET"
+    wait_block "$root_part"
+    mount -t ext4 "$root_part" "$TARGET"
+    MOUNTED=1
+    mkdir -p "$TARGET/boot/efi"
+    if [ -n "${efi_part:-}" ]; then
+        wait_block "$efi_part"
+        mount "$efi_part" "$TARGET/boot/efi"
+    fi
+    for src in proc sys dev run; do
+        mkdir -p "$TARGET/$src"
+        mount --rbind "/$src" "$TARGET/$src"
+        mount --make-rslave "$TARGET/$src"
+    done
+}
 
-  mkdir -p "$TARGET/etc/apk/keys"
-  cp /etc/apk/keys/* "$TARGET/etc/apk/keys/"
+install_offline_packages() {
+    repo=$(find_repo) || die "El repositorio APK de la ISO desapareció."
+    package_words=$(packages | tr '\n' ' ')
+    mkdir -p "$TARGET/etc/apk/keys"
+    cp /etc/apk/keys/* "$TARGET/etc/apk/keys/"
+    say "Instalando paquetes desde la ISO (sin Internet)"
+    apk add --root "$TARGET" --initdb --arch x86_64 \
+        --keys-dir /etc/apk/keys --no-network --repositories-file /dev/null \
+        --repository "$repo" $package_words
+}
 
-  say "Instalando DexOS Server desde la ISO (sin Internet)"
-  apk add --root "$TARGET" --initdb --arch x86_64 --keys-dir /etc/apk/keys --no-network --repository "$repo" \
-    alpine-base alpine-conf busybox-extras ca-certificates tzdata \
-    openssh openssh-server openssh-client openssl kbd-bkeymaps avahi avahi-openrc dbus dbus-openrc \
-    networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli \
-    wpa_supplicant wpa_supplicant-openrc iw wireless-regdb \
-    util-linux e2fsprogs e2fsprogs-extra dosfstools grub grub-bios grub-efi efibootmgr syslinux \
-    linux-lts \
-    linux-firmware-realtek linux-firmware-rtlwifi linux-firmware-rtw88 linux-firmware-rtw89 \
-    linux-firmware-mediatek linux-firmware-ath6k linux-firmware-ath9k_htc linux-firmware-ath10k \
-    linux-firmware-ath11k linux-firmware-ath12k linux-firmware-brcm linux-firmware-cypress \
-    linux-firmware-qca linux-firmware-mwl8k linux-firmware-mwlwifi linux-firmware-libertas \
-    linux-firmware-ti-connectivity linux-firmware-rsi linux-firmware-wfx
+write_target_config() {
+    say "Configurando DexOS Server"
+    mkdir -p "$TARGET/etc/apk" "$TARGET/etc/ssh/sshd_config.d" "$TARGET/etc/avahi" \
+        "$TARGET/etc/doas.d" "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin"
 
-  for d in proc sys dev run; do mkdir -p "$TARGET/$d"; mount --rbind "/$d" "$TARGET/$d"; mount --make-rslave "$TARGET/$d"; done
-
-  cat > "$TARGET/etc/apk/repositories" <<EOF
+    cat > "$TARGET/etc/apk/repositories" <<EOF
 $ONLINE_MAIN
 $ONLINE_COMMUNITY
 EOF
-  printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
-  ln -sf "/usr/share/zoneinfo/$timezone" "$TARGET/etc/localtime"
-  printf '%s\n' "$timezone" > "$TARGET/etc/timezone"
-  cat > "$TARGET/etc/hosts" <<EOF
+    printf '%s\n' "$hostname" > "$TARGET/etc/hostname"
+    cat > "$TARGET/etc/hosts" <<EOF
 127.0.0.1 localhost localhost.localdomain
 127.0.1.1 $hostname $hostname.localdomain
 ::1 localhost localhost.localdomain
 EOF
-  cat > "$TARGET/etc/os-release" <<'EOF'
+    ln -sf "/usr/share/zoneinfo/$timezone" "$TARGET/etc/localtime"
+    printf '%s\n' "$timezone" > "$TARGET/etc/timezone"
+
+    cat > "$TARGET/etc/os-release" <<'EOF'
 NAME="DexOS Server"
 PRETTY_NAME="DexOS Server"
 ID=dexos-server
@@ -154,71 +524,223 @@ ID_LIKE=alpine
 VERSION_ID="edge"
 VERSION="edge"
 EOF
-  cat > "$TARGET/etc/issue" <<'EOF'
+    cat > "$TARGET/etc/issue" <<'EOF'
 DexOS Server \n (Alpine Linux) \l
 EOF
-  cat > "$TARGET/etc/motd" <<'EOF'
+    cat > "$TARGET/etc/motd" <<EOF
 DexOS Server
-Commands: nmcli, install (Live only), apk, rc-service
+mDNS: $mdns_name
+Network: nmcli
+Cambiar arranque predeterminado: boot-order
 EOF
-  mkdir -p "$TARGET/etc/ssh/sshd_config.d"
-  cat > "$TARGET/etc/ssh/sshd_config.d/10-dexos-server.conf" <<'EOF'
+    cat > "$TARGET/etc/ssh/sshd_config.d/10-dexos-server.conf" <<EOF
 PasswordAuthentication yes
-PermitRootLogin yes
+PermitRootLogin $ssh_root_login
 PermitEmptyPasswords no
 UseDNS no
 EOF
-
-  chroot "$TARGET" /usr/sbin/adduser -D -s /bin/ash "$user"
-  chroot "$TARGET" /usr/sbin/addgroup "$user" wheel 2>/dev/null || true
-  printf '%s:%s\nroot:%s\n' "$user" "$userpass" "$rootpass" | chroot "$TARGET" /usr/sbin/chpasswd
-
-  for svc in dbus networkmanager sshd avahi-daemon; do chroot "$TARGET" /sbin/rc-update add "$svc" default >/dev/null 2>&1 || true; done
-  chroot "$TARGET" /sbin/rc-update del networking default >/dev/null 2>&1 || true
-  chroot "$TARGET" /sbin/rc-update del dhcpcd default >/dev/null 2>&1 || true
-
-  root_uuid=$(blkid -s UUID -o value "$p3")
-  efi_uuid=$(blkid -s UUID -o value "$p2")
-  cat > "$TARGET/etc/fstab" <<EOF
-UUID=$root_uuid / ext4 defaults,noatime 0 1
-UUID=$efi_uuid /boot/efi vfat umask=0077 0 2
-tmpfs /tmp tmpfs nosuid,nodev 0 0
+    cat > "$TARGET/etc/avahi/avahi-daemon.conf" <<EOF
+[server]
+host-name=$hostname
+domain-name=local
+use-ipv4=yes
+use-ipv6=yes
+[wide-area]
+enable-wide-area=no
+[publish]
+publish-addresses=yes
+publish-workstation=no
 EOF
+    cat > "$TARGET/etc/doas.d/10-wheel.conf" <<'EOF'
+permit persist :wheel
+EOF
+    chmod 0600 "$TARGET/etc/doas.d/10-wheel.conf"
 
-  say "Instalando GRUB"
-  grub-install --boot-directory="$TARGET/boot" --target=i386-pc "$disk" >/dev/null 2>&1 || true
-  grub-install --target=x86_64-efi --efi-directory="$TARGET/boot/efi" --bootloader-id=DexOS --boot-directory="$TARGET/boot" --no-nvram
-  mkdir -p "$TARGET/boot/efi/EFI/BOOT"
-  cp "$TARGET/boot/efi/EFI/DexOS/grubx64.efi" "$TARGET/boot/efi/EFI/BOOT/BOOTX64.EFI"
-  cat > "$TARGET/etc/default/grub" <<'EOF'
-GRUB_TIMEOUT=3
+    [ -e /etc/resolv.conf ] && cp -L /etc/resolv.conf "$TARGET/etc/resolv.conf" || true
+    chroot "$TARGET" /usr/sbin/adduser -D -s /bin/ash "$admin_user"
+    chroot "$TARGET" /usr/sbin/addgroup "$admin_user" wheel >/dev/null 2>&1 || true
+    chroot "$TARGET" /usr/sbin/addgroup "$admin_user" plugdev >/dev/null 2>&1 || true
+    printf '%s:%s\nroot:%s\n' "$admin_user" "$admin_password" "$root_password" \
+        | chroot "$TARGET" /usr/sbin/chpasswd
+    unset admin_password root_password
+
+    chroot "$TARGET" /usr/bin/ssh-keygen -A >/dev/null 2>&1 || true
+    for svc in dbus networkmanager sshd avahi-daemon; do
+        chroot "$TARGET" /sbin/rc-update add "$svc" default >/dev/null 2>&1 || true
+    done
+    chroot "$TARGET" /sbin/rc-update del networking default >/dev/null 2>&1 || true
+    chroot "$TARGET" /sbin/rc-update del dhcpcd default >/dev/null 2>&1 || true
+    chroot "$TARGET" /sbin/rc-update del wpa_supplicant default >/dev/null 2>&1 || true
+
+    if [ -d /etc/NetworkManager/system-connections ]; then
+        cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
+        chmod 0600 "$TARGET"/etc/NetworkManager/system-connections/* 2>/dev/null || true
+    fi
+    if [ -x /usr/local/sbin/boot-order ]; then
+        cp /usr/local/sbin/boot-order "$TARGET/usr/local/sbin/boot-order"
+        chmod 0755 "$TARGET/usr/local/sbin/boot-order"
+    fi
+}
+
+configure_boot() {
+    root_uuid=$(blkid -s UUID -o value "$root_part")
+    [ -n "$root_uuid" ] || die "No se pudo obtener el UUID de la raíz."
+    efi_uuid=''
+    [ -z "${efi_part:-}" ] || efi_uuid=$(blkid -s UUID -o value "$efi_part")
+
+    cat > "$TARGET/etc/fstab" <<EOF
+UUID=$root_uuid / ext4 defaults,noatime 0 1
+EOF
+    if [ -n "$efi_uuid" ]; then
+        printf 'UUID=%s /boot/efi vfat umask=0077 0 2\n' "$efi_uuid" >> "$TARGET/etc/fstab"
+    fi
+    printf 'tmpfs /tmp tmpfs nosuid,nodev 0 0\n' >> "$TARGET/etc/fstab"
+
+    mkdir -p "$TARGET/etc/mkinitfs"
+    cat > "$TARGET/etc/mkinitfs/mkinitfs.conf" <<'EOF'
+features="ata base scsi usb virtio ext4 nvme"
+EOF
+    kernel_version=''
+    for module_dir in "$TARGET"/lib/modules/*; do
+        [ -d "$module_dir" ] || continue
+        kernel_version=${module_dir##*/}
+    done
+    [ -n "$kernel_version" ] || die "No se encontró el kernel instalado."
+
+    say "Generando initramfs"
+    chroot "$TARGET" /sbin/mkinitfs -c /etc/mkinitfs/mkinitfs.conf -o /boot/initramfs-lts "$kernel_version"
+    [ -s "$TARGET/boot/initramfs-lts" ] || die "No se generó /boot/initramfs-lts."
+    [ -s "$TARGET/boot/vmlinuz-lts" ] || die "No se instaló /boot/vmlinuz-lts."
+
+    say "Instalando GRUB"
+    bios_ok=0
+    efi_ok=0
+    if [ "$bios_install" -eq 1 ]; then
+        if grub-install --boot-directory="$TARGET/boot" --target=i386-pc "$disk"; then
+            bios_ok=1
+        elif [ "$efi_install" -ne 1 ]; then
+            die "Falló GRUB BIOS y no existe una alternativa UEFI."
+        else
+            warn "GRUB BIOS no pudo instalarse; se continuará con UEFI."
+        fi
+    fi
+
+    if [ "$efi_install" -eq 1 ]; then
+        [ -n "${efi_part:-}" ] || die "Se solicitó UEFI pero no hay ESP seleccionada."
+        if [ -d /sys/firmware/efi/efivars ]; then
+            grub-install --target=x86_64-efi --efi-directory="$TARGET/boot/efi" \
+                --bootloader-id=DexOS --boot-directory="$TARGET/boot"
+        else
+            grub-install --target=x86_64-efi --efi-directory="$TARGET/boot/efi" \
+                --bootloader-id=DexOS --boot-directory="$TARGET/boot" --no-nvram
+        fi
+        efi_ok=1
+        if [ "$install_mode" = whole ]; then
+            mkdir -p "$TARGET/boot/efi/EFI/BOOT"
+            cp "$TARGET/boot/efi/EFI/DexOS/grubx64.efi" "$TARGET/boot/efi/EFI/BOOT/BOOTX64.EFI"
+        fi
+    fi
+    [ "$bios_ok" -eq 1 ] || [ "$efi_ok" -eq 1 ] || die "No se instaló ningún cargador de arranque."
+
+    cat > "$TARGET/etc/default/grub" <<EOF
+GRUB_TIMEOUT=5
+GRUB_DEFAULT=saved
+GRUB_SAVEDEFAULT=false
 GRUB_DISABLE_SUBMENU=y
 GRUB_DISABLE_RECOVERY=true
 GRUB_DISTRIBUTOR="DexOS Server"
+GRUB_DISABLE_OS_PROBER=false
+GRUB_CMDLINE_LINUX="root=UUID=$root_uuid rootfstype=ext4"
 GRUB_CMDLINE_LINUX_DEFAULT="quiet"
 EOF
-  chroot "$TARGET" /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
 
-  # Preserve current Wi-Fi profiles if they were created with nmcli in the Live.
-  if [ -d /etc/NetworkManager/system-connections ]; then
-    mkdir -p "$TARGET/etc/NetworkManager/system-connections"
-    cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
-    chmod 600 "$TARGET"/etc/NetworkManager/system-connections/* 2>/dev/null || true
-  fi
-
-  sync
-  umount -R "$TARGET"
-  trap - EXIT INT TERM
-  say "DexOS Server instalado correctamente. Retira la ISO y reinicia."
+    say "Buscando Windows y otros Linux"
+    mkdir -p "$TARGET/var/log"
+    if [ -x "$TARGET/usr/bin/os-prober" ]; then
+        chroot "$TARGET" /usr/bin/os-prober > "$TARGET/var/log/dexos-os-prober.log" 2>&1 || true
+        if [ -s "$TARGET/var/log/dexos-os-prober.log" ]; then
+            cat "$TARGET/var/log/dexos-os-prober.log"
+        else
+            echo "No se detectaron otros sistemas operativos."
+        fi
+    fi
+    chroot "$TARGET" /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
+    grep -Fq "root=UUID=$root_uuid" "$TARGET/boot/grub/grub.cfg" \
+        || die "GRUB no quedó configurado con el UUID de la raíz."
+    chroot "$TARGET" /usr/sbin/grub-set-default 0 >/dev/null 2>&1 || true
 }
 
-clear 2>/dev/null || true
-cat <<'EOF'
-=================================
-       DexOS Server Install
-=================================
-Instalador offline propio de DexOS Server.
-La conexión Wi-Fi es opcional para instalar; el medio contiene los paquetes.
+show_installable_disks() {
+    file="$WORK/check-disks"
+    make_disk_list "$file"
+    if [ ! -s "$file" ]; then
+        echo "No hay discos de destino; el medio de instalación está oculto."
+        return 0
+    fi
+    print_disk_menu "$file"
+}
+
+run_check() {
+    preflight
+    ensure_networkmanager
+    say "NetworkManager"
+    nmcli -f DEVICE,TYPE,STATE,CONNECTION device status || true
+    say "Discos instalables"
+    show_installable_disks
+    echo
+    echo "Comprobación completada: el instalador puede trabajar sin Internet."
+}
+
+run_installer() {
+    clear 2>/dev/null || true
+    cat <<'EOF'
+========================================
+         DexOS Server Installer
+========================================
+Instalador offline con NetworkManager, mDNS y GRUB inteligente.
+Puede usar un disco completo o coexistir con Windows/Linux.
 EOF
-wifi_assistant
-install_system
+
+    preflight
+    wifi_assistant
+    collect_identity
+    choose_layout
+
+    say "Resumen"
+    echo "Servidor:     $mdns_name"
+    echo "Usuario:      $admin_user"
+    echo "Root por SSH: $ssh_root_login"
+    echo "Zona:         $timezone"
+    echo "Disco:        $disk"
+    echo "Modo:         $install_mode"
+    if [ "$install_mode" = coexist ]; then
+        echo "Raíz a borrar: $root_part"
+        echo "ESP conservada: ${efi_part:-ninguna}"
+        echo "Otros sistemas: se conservarán y GRUB intentará detectarlos."
+    else
+        echo "ATENCIÓN: se borrará TODO el disco $disk."
+    fi
+    confirm "¿Iniciar la instalación?" || exit 0
+
+    prepare_storage
+    mount_target
+    install_offline_packages
+    write_target_config
+    configure_boot
+
+    say "Sincronizando datos"
+    sync
+    cleanup
+    trap - EXIT HUP INT TERM
+    echo
+    echo "DexOS Server se instaló correctamente."
+    echo "Nombre mDNS: $mdns_name"
+    echo "Después de arrancar puedes cambiar el sistema predeterminado con: boot-order"
+    echo "Retira el medio Live y reinicia."
+}
+
+case "${1:-}" in
+    --wifi) wifi_assistant ;;
+    --check) run_check ;;
+    '') run_installer ;;
+esac

@@ -1,17 +1,25 @@
 #!/bin/sh
 set -eu
+
 HOSTNAME="${1:-dexos-server}"
-apkovl="${DESTDIR:-.}/${HOSTNAME}.apkovl.tar.gz"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
+# The archive contains `.` itself. mktemp creates it as 0700; if preserved,
+# Alpine applies that mode to the Live root and non-root daemons cannot traverse /.
+chmod 0755 "$tmp"
+
 mkdir -p \
   "$tmp/etc/ssh/sshd_config.d" \
   "$tmp/etc/avahi" \
   "$tmp/etc/NetworkManager/system-connections" \
+  "$tmp/etc/apk" \
+  "$tmp/etc/runlevels/sysinit" \
   "$tmp/etc/runlevels/default" \
   "$tmp/etc/runlevels/boot" \
-  "$tmp/etc/apk" \
-  "$tmp/usr/local/sbin"
+  "$tmp/etc/runlevels/shutdown" \
+  "$tmp/etc/profile.d" \
+  "$tmp/usr/local/sbin" \
+  "$tmp/usr/share/dexos"
 
 printf '%s\n' "$HOSTNAME" > "$tmp/etc/hostname"
 cat > "$tmp/etc/hosts" <<EOF
@@ -23,13 +31,21 @@ cat > "$tmp/etc/apk/repositories" <<'EOF'
 https://dl-cdn.alpinelinux.org/alpine/edge/main
 https://dl-cdn.alpinelinux.org/alpine/edge/community
 EOF
+
+# Packages in the ISO repository are not automatically installed in the Live.
+# world makes nmcli, firmware and the disk installer available before networking.
+cp /work/server/live-world.txt "$tmp/etc/apk/world"
+sed -i -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$tmp/etc/apk/world"
+cp /work/server/packages.txt "$tmp/usr/share/dexos/server-packages.txt"
+
 cat > "$tmp/etc/motd" <<'EOF'
 DexOS Server
 Ultra-light Alpine Linux server edition.
 
 Install to disk: install
-Network/Wi-Fi:   nmcli
-SSH and Avahi are enabled at boot.
+Wi-Fi assistant: install --wifi
+Network tools: nmcli
+SSH and Avahi start automatically.
 EOF
 cat > "$tmp/etc/issue" <<'EOF'
 DexOS Server \n (Alpine Linux) \l
@@ -50,7 +66,6 @@ UseDNS no
 EOF
 cat > "$tmp/etc/avahi/avahi-daemon.conf" <<'EOF'
 [server]
-host-name=dexos-server
 use-ipv4=yes
 use-ipv6=yes
 [wide-area]
@@ -59,18 +74,30 @@ enable-wide-area=no
 publish-addresses=yes
 publish-workstation=no
 EOF
+cat > "$tmp/etc/profile.d/00-dexos-path.sh" <<'EOF'
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EOF
 
 cp /work/server/install "$tmp/usr/local/sbin/install"
-chmod 0755 "$tmp/usr/local/sbin/install"
+cp /work/server/boot-order "$tmp/usr/local/sbin/boot-order"
+chmod 0755 "$tmp/usr/local/sbin/install" "$tmp/usr/local/sbin/boot-order"
 
+for svc in devfs dmesg mdev hwdrivers modloop; do
+    ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/sysinit/$svc"
+done
 for svc in dbus networkmanager sshd avahi-daemon; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/default/$svc"
 done
 for svc in hostname modules sysctl bootmisc syslog; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/boot/$svc"
 done
+for svc in mount-ro killprocs savecache; do
+    ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/shutdown/$svc"
+done
 
-# Do not ship static SSH host keys. OpenSSH will generate unique keys on boot.
+# OpenSSH generates unique host keys when the Live boots; never bake keys into ISO.
 rm -f "$tmp"/etc/ssh/ssh_host_* 2>/dev/null || true
 
-( cd "$tmp" && tar -czf "$apkovl" . )
+# mkimage invokes this script from the section destination directory. Write the
+# archive there (not inside $tmp, which is removed by the EXIT trap).
+tar -c -C "$tmp" . | gzip -9n > "$HOSTNAME.apkovl.tar.gz"
