@@ -35,12 +35,14 @@ Permitir instalar DexOS Server sobre particiones existentes aunque no tengan fil
 - [x] Ocultar completamente footer/botón Continuar durante el paso de instalación; `[hidden]` ya no puede ser anulado por las clases Tailwind.
 - [x] Validación histórica de `network.cgi` y reboot; `network.cgi` fue retirado al adoptar Wi-Fi diferido, mientras el reboot permanece.
 - [x] AP+STA simultáneo descartado tras la prueba física del usuario; se sustituyó por configuración Wi-Fi para el primer arranque.
-- [ ] Validar en hardware físico la nueva ISO con Wi-Fi diferido y `diskinfo`; cerrar la tarea después de esa prueba.
+- [x] Diagnosticar la carrera del primer arranque: la radio aparecía antes de que el SSID estuviera disponible en el scan de NetworkManager.
+- [x] Añadir dependencias explícitas `dbus` + `wpa_supplicant` + `networkmanager`, scan dirigido, `hidden yes`, tres intentos y log de diagnóstico.
+- [ ] Validar en hardware físico la nueva ISO con el Wi-Fi diferido corregido y `diskinfo`; cerrar la tarea después de esa prueba.
 
 ## ISO actual para prueba física
 - `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
 - `741343232` bytes (~707 MiB)
-- SHA-256: `0fb1b37937d6869e27e4d4f2ebfed372db6161058b1884722927f74801671bf7`
+- SHA-256: `6d52cf729c39b4c6f3ff3df1b517defac168e8be48e4a7216da61aba21ce5f95`
 - APKINDEX offline: 194 paquetes.
 
 ## Nota de diagnóstico
@@ -76,3 +78,10 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - Smoke test de `wifi` confirmó `status`, `scan` y `connect`; la contraseña también se entrega por stdin a `nmcli --ask`.
 - `diskinfo` se ejecutó y mostró la tarjeta de almacenamiento solicitada.
 - La ISO final fue extraída e inspeccionada: no contiene `network.cgi` ni lógica `dexsta0`; sí contiene campos SSID/contraseña, servicio diferido, `wifi`, `diskinfo` y botón de reinicio.
+
+
+### Diagnóstico Wi-Fi primer arranque
+- El fallo físico reportado coincide con una carrera de escaneo, no con una ausencia total de la tarjeta: el servicio ya había detectado una interfaz Wi-Fi pero intentaba conectar una sola vez demasiado pronto.
+- Reproducción `mac80211_hwsim`: sin scan actualizado, `nmcli` devolvió `No network with SSID ... found`; después de un scan dirigido, el mismo comando de conexión funcionó.
+- Nuevo servicio: espera 30 s por dispositivo, fuerza scan del SSID, prueba hasta tres veces, usa `hidden yes` y deja `/var/log/dexos-wifi-firstboot.log`.
+- ISO corregida SHA-256: `6d52cf729c39b4c6f3ff3df1b517defac168e8be48e4a7216da61aba21ce5f95`.

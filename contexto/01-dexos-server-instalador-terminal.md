@@ -260,3 +260,14 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - El botón `Reiniciar ahora` sigue protegido por `/run/dexos-install-complete` y el footer/Continuar permanece oculto durante el paso de instalación.
 - Validación QEMU: instalación completa con SSID diferido; target con config `0600`, servicio habilitado y scripts presentes. Smoke tests con nmcli simulado validaron primer arranque y herramienta `wifi` sin filtrar contraseña por argv.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes (~707 MiB), SHA-256 `0fb1b37937d6869e27e4d4f2ebfed372db6161058b1884722927f74801671bf7`, APKINDEX 194 paquetes.
+
+
+# Corrección de carrera Wi-Fi en primer arranque 2026-09-08
+- En hardware físico el usuario reportó `Could not connect to <SSID>; configuration will be retried on the next boot`.
+- Diagnóstico: el servicio anterior esperaba sólo a que apareciera una interfaz `wifi`, pero no esperaba a que NetworkManager/wpa_supplicant completaran el escaneo del SSID. Hacía un único `nmcli device wifi connect` y ocultaba el error técnico.
+- Reproducción con `mac80211_hwsim`: con la interfaz ya visible pero sin un scan reciente, `nmcli --ask device wifi connect` devolvió código 10 y `No network with SSID ... found`. Tras forzar un scan dirigido al SSID, la misma forma de conexión funcionó correctamente.
+- `dexos-wifi-firstboot` ahora declara `need dbus wpa_supplicant networkmanager`, corre después de `udev-settle`/`udev-postmount`, espera hasta 30 s por la radio, fuerza `nmcli device wifi rescan ... ssid <SSID>` y realiza hasta 3 intentos.
+- La conexión usa `hidden yes`, que permite sondeo activo y también soporta SSID ocultos.
+- Los errores de NetworkManager se conservan sin contraseña en `/var/log/dexos-wifi-firstboot.log` (modo 0600); si falla, el archivo de configuración temporal se conserva para el siguiente boot. Tras éxito se elimina.
+- Smoke test con `nmcli` simulado validó: primer intento fallido, segundo exitoso, rescans repetidos, `hidden yes`, eliminación de configuración tras éxito y contraseña ausente de argv.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes (~707 MiB), SHA-256 `6d52cf729c39b4c6f3ff3df1b517defac168e8be48e4a7216da61aba21ce5f95`.
