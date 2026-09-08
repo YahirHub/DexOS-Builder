@@ -1,0 +1,28 @@
+#!/sbin/openrc-run
+
+description="DexOS Live web installer and temporary Wi-Fi access point"
+
+# This service exists only in the Live ISO. It is never copied to the installed OS.
+depend() {
+    need dbus
+    after udev-settle
+    # Start the global wpa_supplicant D-Bus service before NetworkManager.
+    # The hotspot monitor itself waits/retries until NetworkManager and a radio exist.
+    before networkmanager sshd avahi-daemon
+}
+
+start() {
+    ebegin "Starting DexOS graphical installer"
+    printf 'root:root\n' | chpasswd || {
+        eend 1 "Could not set temporary Live root password"
+        return 1
+    }
+    /usr/local/sbin/dex-installer-live start
+    eend $?
+}
+
+stop() {
+    ebegin "Stopping DexOS graphical installer"
+    /usr/local/sbin/dex-installer-live stop
+    eend $?
+}

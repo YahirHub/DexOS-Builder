@@ -1,0 +1,283 @@
+#!/bin/sh
+set -eu
+
+WEBROOT=/usr/share/dexos/installer-web
+HTTP_PID=/run/dex-installer-http.pid
+DNS_PID=/run/dex-installer-dnsmasq.pid
+WPA_PID=/run/dex-installer-wpa-supplicant.pid
+HOTSPOT_PID=/run/dex-installer-hotspot.pid
+DNS_CONF=/run/dex-installer-dnsmasq.conf
+STATUS=/run/dex-installer-live.status
+LOG=/var/log/dex-installer-hotspot.log
+SSID=Dex-Installer
+AP_IP=10.42.0.1
+
+log() {
+    mkdir -p /var/log
+    printf '%s Dex-Installer: %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo now)" "$*" >>"$LOG" 2>/dev/null || true
+    printf 'Dex-Installer: %s\n' "$*" >/dev/console 2>/dev/null || true
+}
+
+write_status() {
+    hotspot=${1:-waiting}
+    wifi=${2:-}
+    reason=${3:-}
+    cat > "$STATUS" <<EOF
+HOTSPOT=$hotspot
+WIFI_DEVICE=$wifi
+SSID=$SSID
+AP_IP=$AP_IP
+MDNS=dexos-installer.local
+REASON=$reason
+EOF
+    chmod 0644 "$STATUS"
+}
+
+start_wpa_global() {
+    # Alpine's NetworkManager package expects a D-Bus wpa_supplicant service.
+    # Run it without binding an interface so internal/USB radios may appear later.
+    if command -v pidof >/dev/null 2>&1 && pidof wpa_supplicant >/dev/null 2>&1; then
+        return 0
+    fi
+    rm -f "$WPA_PID"
+    if /sbin/wpa_supplicant -B -u -P "$WPA_PID" >>"$LOG" 2>&1; then
+        log 'wpa_supplicant D-Bus global iniciado para NetworkManager/hotplug'
+        return 0
+    fi
+    log 'no se pudo iniciar wpa_supplicant global'
+    return 1
+}
+
+start_http() {
+    [ -d "$WEBROOT" ] || { log "falta $WEBROOT"; return 1; }
+    if [ -s "$HTTP_PID" ] && kill -0 "$(cat "$HTTP_PID")" 2>/dev/null; then
+        return 0
+    fi
+    rm -f "$HTTP_PID"
+    mini_httpd \
+        -p 80 \
+        -d "$WEBROOT" \
+        -c '**.cgi' \
+        -u root \
+        -i "$HTTP_PID" \
+        -T utf-8 \
+        -l /var/log/dex-installer-http.log
+}
+
+list_wifi_devices() {
+    {
+        nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi" && $1!="" {print $1}'
+        iw dev 2>/dev/null | awk '$1=="Interface" {print $2}'
+    } | awk 'NF && !seen[$0]++'
+}
+
+wifi_supports_ap() {
+    dev=$1
+    phy=$(iw dev "$dev" info 2>/dev/null | awk '$1=="wiphy" {print "phy" $2; exit}')
+    [ -n "$phy" ] || return 1
+    iw phy "$phy" info 2>/dev/null | awk '
+        /Supported interface modes:/ {modes=1; next}
+        modes && /^[[:space:]]*Band [0-9]+:/ {exit}
+        modes && /^[[:space:]]*\*[[:space:]]+AP([[:space:]]|$)/ {found=1}
+        END {exit found ? 0 : 1}
+    '
+}
+
+hotspot_is_active() {
+    dev=${1:-}
+    [ -n "$dev" ] || return 1
+    iw dev "$dev" info 2>/dev/null | grep -Eq '^[[:space:]]*type[[:space:]]+AP$' || return 1
+    ip -4 addr show dev "$dev" 2>/dev/null | grep -Fq "$AP_IP/24"
+}
+
+start_dnsmasq() {
+    dev=$1
+    if [ -s "$DNS_PID" ] && kill -0 "$(cat "$DNS_PID")" 2>/dev/null; then
+        return 0
+    fi
+    cat > "$DNS_CONF" <<EOF
+interface=$dev
+bind-interfaces
+no-resolv
+address=/#/$AP_IP
+dhcp-range=10.42.0.20,10.42.0.200,255.255.255.0,1h
+dhcp-option=3,$AP_IP
+dhcp-option=6,$AP_IP
+dhcp-authoritative
+log-dhcp
+EOF
+    rm -f "$DNS_PID"
+    dnsmasq --conf-file="$DNS_CONF" --pid-file="$DNS_PID" >>"$LOG" 2>&1
+}
+
+activate_hotspot_on() {
+    dev=$1
+    log "intentando hotspot en $dev"
+
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock wifi >>"$LOG" 2>&1 || true
+    ip link set "$dev" up >>"$LOG" 2>&1 || true
+    nmcli device set "$dev" managed yes >>"$LOG" 2>&1 || true
+    nmcli radio wifi on >>"$LOG" 2>&1 || true
+
+    wifi_supports_ap "$dev" || {
+        log "$dev detectado, pero el driver no anuncia modo AP"
+        return 2
+    }
+
+    nmcli connection delete "$SSID" >>"$LOG" 2>&1 || true
+    if ! nmcli connection add type wifi ifname "$dev" con-name "$SSID" ssid "$SSID" \
+        802-11-wireless.mode ap \
+        ipv4.method manual ipv4.addresses "$AP_IP/24" ipv4.never-default yes \
+        ipv6.method disabled >>"$LOG" 2>&1; then
+        log "NetworkManager no pudo crear el perfil AP en $dev"
+        return 1
+    fi
+
+    # Red abierta deliberadamente: es un acceso temporal al instalador Live.
+    nmcli connection modify "$SSID" \
+        connection.autoconnect no \
+        802-11-wireless.hidden no \
+        802-11-wireless.powersave 2 >>"$LOG" 2>&1 || true
+
+    if ! nmcli connection up "$SSID" ifname "$dev" >>"$LOG" 2>&1; then
+        log "NetworkManager no pudo activar el AP en $dev"
+        nmcli connection delete "$SSID" >>"$LOG" 2>&1 || true
+        return 1
+    fi
+
+    i=0
+    while [ "$i" -lt 15 ]; do
+        hotspot_is_active "$dev" && break
+        sleep 1
+        i=$((i + 1))
+    done
+    hotspot_is_active "$dev" || {
+        log "$dev no quedó en modo AP después de activarlo"
+        nmcli connection down "$SSID" >>"$LOG" 2>&1 || true
+        nmcli connection delete "$SSID" >>"$LOG" 2>&1 || true
+        return 1
+    }
+
+    if ! start_dnsmasq "$dev"; then
+        log "dnsmasq no pudo iniciar en $dev"
+        nmcli connection down "$SSID" >>"$LOG" 2>&1 || true
+        nmcli connection delete "$SSID" >>"$LOG" 2>&1 || true
+        return 1
+    fi
+
+    write_status active "$dev" ready
+    log "Wi-Fi temporal $SSID activo en $dev ($AP_IP)"
+    return 0
+}
+
+try_hotspot() {
+    command -v nmcli >/dev/null 2>&1 || { write_status error '' no-nmcli; return 1; }
+    command -v iw >/dev/null 2>&1 || { write_status error '' no-iw; return 1; }
+    command -v dnsmasq >/dev/null 2>&1 || { write_status error '' no-dnsmasq; return 1; }
+
+    start_wpa_global || true
+    nmcli general status >>"$LOG" 2>&1 || return 1
+    devices=$(list_wifi_devices || true)
+    if [ -z "$devices" ]; then
+        write_status waiting '' no-wifi-device
+        return 1
+    fi
+
+    ap_capable=0
+    for dev in $devices; do
+        if wifi_supports_ap "$dev"; then
+            ap_capable=1
+            activate_hotspot_on "$dev" && return 0
+        else
+            log "$dev existe pero no anuncia modo AP"
+        fi
+    done
+    if [ "$ap_capable" -eq 0 ]; then
+        write_status unsupported "$(printf '%s' "$devices" | tr '\n' ',')" no-ap-capability
+    else
+        write_status waiting "$(printf '%s' "$devices" | tr '\n' ',')" activation-failed
+    fi
+    return 1
+}
+
+hotspot_watch() {
+    trap 'exit 0' HUP INT TERM
+    last=''
+    while :; do
+        if [ -f "$STATUS" ]; then
+            . "$STATUS" 2>/dev/null || true
+            if [ "${HOTSPOT:-}" = active ] && hotspot_is_active "${WIFI_DEVICE:-}"; then
+                sleep 5
+                continue
+            fi
+        fi
+
+        snapshot=$(list_wifi_devices 2>/dev/null | tr '\n' ' ' || true)
+        if [ "$snapshot" != "$last" ]; then
+            [ -n "$snapshot" ] && log "adaptadores Wi-Fi detectados: $snapshot" || log "esperando tarjeta Wi-Fi/USB"
+            last=$snapshot
+        fi
+        try_hotspot || true
+        sleep 2
+    done
+}
+
+start_hotspot_watch() {
+    if [ -s "$HOTSPOT_PID" ] && kill -0 "$(cat "$HOTSPOT_PID")" 2>/dev/null; then
+        return 0
+    fi
+    rm -f "$HOTSPOT_PID"
+    "$0" watch >>"$LOG" 2>&1 &
+    pid=$!
+    printf '%s\n' "$pid" > "$HOTSPOT_PID"
+    log "monitor Wi-Fi iniciado (pid $pid); acepta adaptadores USB conectados después del arranque"
+}
+
+stop_pidfile() {
+    file=$1
+    if [ -s "$file" ]; then
+        pid=$(cat "$file")
+        kill "$pid" >/dev/null 2>&1 || true
+        i=0
+        while kill -0 "$pid" >/dev/null 2>&1 && [ "$i" -lt 20 ]; do
+            sleep 0.1
+            i=$((i + 1))
+        done
+        kill -9 "$pid" >/dev/null 2>&1 || true
+    fi
+    rm -f "$file"
+}
+
+start_all() {
+    mkdir -p /run /var/log
+    : > "$LOG"
+    write_status waiting '' boot
+    start_http || { log 'no se pudo iniciar el instalador web'; return 1; }
+    start_wpa_global || true
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock all >>"$LOG" 2>&1 || true
+    nmcli radio wifi on >>"$LOG" 2>&1 || true
+    start_hotspot_watch
+    log 'Web: http://dexos-installer.local/ · Wi-Fi esperado: Dex-Installer'
+}
+
+stop_all() {
+    stop_pidfile "$HOTSPOT_PID"
+    stop_pidfile "$DNS_PID"
+    nmcli connection down "$SSID" >>"$LOG" 2>&1 || true
+    nmcli connection delete "$SSID" >>"$LOG" 2>&1 || true
+    stop_pidfile "$HTTP_PID"
+    stop_pidfile "$WPA_PID"
+    rm -f "$DNS_CONF" "$STATUS"
+}
+
+case "${1:-}" in
+    start) start_all ;;
+    stop) stop_all ;;
+    restart) stop_all; start_all ;;
+    watch) hotspot_watch ;;
+    retry) try_hotspot ;;
+    status)
+        [ -f "$STATUS" ] && cat "$STATUS" || exit 1
+        ;;
+    *) echo "Uso: $0 {start|stop|restart|watch|retry|status}" >&2; exit 2 ;;
+esac

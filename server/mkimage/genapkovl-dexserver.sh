@@ -1,11 +1,18 @@
 #!/bin/sh
 set -eu
 
-HOSTNAME="${1:-dexos-server}"
+HOSTNAME="${1:-dexos-installer}"
 ARGON_ASSET=/work/server/assets/argon-grub-theme
+WEB_ASSET=/work/server/web
+LIVE_HELPER=/work/server/dex-installer-live
+LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon de GRUB" >&2; exit 1; }
 [ -f "$ARGON_ASSET/background.png" ] || { echo "Falta background.png del tema Argon" >&2; exit 1; }
 [ -f "$ARGON_ASSET/LICENCE.txt" ] || { echo "Falta LICENCE.txt del tema Argon" >&2; exit 1; }
+[ -f "$WEB_ASSET/index.html" ] || { echo "Falta instalador web" >&2; exit 1; }
+[ -x "$WEB_ASSET/cgi-bin/install.cgi" ] || { echo "Falta CGI de instalación" >&2; exit 1; }
+[ -x "$LIVE_HELPER" ] || { echo "Falta helper Dex-Installer Live" >&2; exit 1; }
+[ -x "$LIVE_SERVICE" ] || { echo "Falta servicio OpenRC Dex-Installer Live" >&2; exit 1; }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 # The archive contains `.` itself. mktemp creates it as 0700; if preserved,
@@ -23,9 +30,11 @@ mkdir -p \
   "$tmp/etc/runlevels/boot" \
   "$tmp/etc/runlevels/shutdown" \
   "$tmp/etc/profile.d" \
+  "$tmp/etc/init.d" \
   "$tmp/usr/local/sbin" \
   "$tmp/usr/share/dexos/grub.d" \
-  "$tmp/usr/share/dexos/argon-grub-theme"
+  "$tmp/usr/share/dexos/argon-grub-theme" \
+  "$tmp/usr/share/dexos/installer-web"
 
 printf '%s\n' "$HOSTNAME" > "$tmp/etc/hostname"
 cat > "$tmp/etc/hosts" <<EOF
@@ -78,15 +87,17 @@ cp /work/server/live-world.txt "$tmp/etc/apk/world"
 sed -i -e 's/#.*$//' -e '/^[[:space:]]*$/d' "$tmp/etc/apk/world"
 cp /work/server/packages.txt "$tmp/usr/share/dexos/server-packages.txt"
 cp -a "$ARGON_ASSET/." "$tmp/usr/share/dexos/argon-grub-theme/"
+cp -a "$WEB_ASSET/." "$tmp/usr/share/dexos/installer-web/"
 
 cat > "$tmp/etc/motd" <<'EOF'
 DexOS Server
 Ultra-light Alpine Linux server edition.
 
-Install to disk: install
-Wi-Fi assistant: install --wifi
+Web installer: http://dexos-installer.local/
+Wi-Fi installer: Dex-Installer (si la tarjeta soporta modo AP)
+SSH temporal Live: root / root
+Terminal installer: install
 Network tools: nmcli
-SSH and Avahi start automatically.
 EOF
 cat > "$tmp/etc/issue" <<'EOF'
 DexOS Server \n (Alpine Linux) \l
@@ -121,6 +132,8 @@ EOF
 
 cp /work/server/install "$tmp/usr/local/sbin/install"
 cp /work/server/boot-order "$tmp/usr/local/sbin/boot-order"
+cp "$LIVE_HELPER" "$tmp/usr/local/sbin/dex-installer-live"
+cp "$LIVE_SERVICE" "$tmp/etc/init.d/dex-installer-live"
 cp /work/server/grub-update "$tmp/usr/local/sbin/grub-update"
 ln -s grub-update "$tmp/usr/local/sbin/update-grub"
 cp /work/server/grub-other-os "$tmp/usr/share/dexos/grub.d/31_dexos_other_os"
@@ -128,12 +141,15 @@ chmod 0755 \
   "$tmp/usr/local/sbin/install" \
   "$tmp/usr/local/sbin/boot-order" \
   "$tmp/usr/local/sbin/grub-update" \
-  "$tmp/usr/share/dexos/grub.d/31_dexos_other_os"
+  "$tmp/usr/local/sbin/dex-installer-live" \
+  "$tmp/etc/init.d/dex-installer-live" \
+  "$tmp/usr/share/dexos/grub.d/31_dexos_other_os" \
+  "$tmp/usr/share/dexos/installer-web/cgi-bin/"*.cgi
 
 for svc in devfs dmesg udev udev-trigger udev-settle hwdrivers modloop; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/sysinit/$svc"
 done
-for svc in dbus networkmanager sshd avahi-daemon udev-postmount; do
+for svc in dbus networkmanager dex-installer-live sshd avahi-daemon udev-postmount; do
     ln -s "/etc/init.d/$svc" "$tmp/etc/runlevels/default/$svc"
 done
 for svc in hostname modules sysctl bootmisc syslog; do

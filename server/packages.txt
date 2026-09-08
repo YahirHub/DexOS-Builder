@@ -38,6 +38,12 @@ linux-firmware-rtlwifi
 linux-firmware-rtw88
 linux-firmware-rtw89
 linux-firmware-mediatek
+linux-firmware-intel
+linux-firmware-airoha
+linux-firmware-atmel
+linux-firmware-mrvl
+linux-firmware-nxp
+linux-firmware-other
 linux-firmware-ath6k
 linux-firmware-ath9k_htc
 linux-firmware-ath10k

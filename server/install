@@ -10,6 +10,8 @@ MIN_ROOT=1073741824
 EFI_GUID=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
 BIOS_GUID=21686148-6449-6e6f-744e-656564454649
 MOUNTED=0
+LOCKED=0
+INSTALL_LOCK=/run/dexos-install.lock
 WORK=/tmp/dexos-installer.$$
 mkdir -p "$WORK"
 
@@ -35,11 +37,15 @@ cleanup() {
         MOUNTED=0
     fi
     rm -rf "$WORK" >/dev/null 2>&1 || true
+    if [ "$LOCKED" -eq 1 ]; then
+        rm -rf "$INSTALL_LOCK" >/dev/null 2>&1 || true
+        LOCKED=0
+    fi
 }
 trap cleanup EXIT HUP INT TERM
 
 case "${1:-}" in
-    ''|--wifi|--check|--help|-h) ;;
+    ''|--wifi|--check|--inventory|--batch|--help|-h) ;;
     *)
         if [ -x /usr/bin/install ] && [ "$0" != /usr/bin/install ]; then
             exec /usr/bin/install "$@"
@@ -54,7 +60,9 @@ DexOS Server installer
 
   install          Ejecuta el asistente inteligente de instalación offline.
   install --wifi   Ejecuta únicamente el asistente de Wi-Fi.
-  install --check  Verifica medio, módulos, paquetes y discos sin modificar nada.
+  install --check      Verifica medio, módulos, paquetes y discos sin modificar nada.
+  install --inventory  Lista discos/particiones en TSV para el instalador web.
+  install --batch      Instala sin prompts usando variables DEXOS_* validadas.
 EOF
     exit 0
 fi
@@ -149,6 +157,15 @@ validate_hostname() {
 validate_user() {
     [ "$1" != root ] && printf '%s\n' "$1" | grep -Eq '^[a-z_][a-z0-9_-]{0,30}$'
 }
+validate_password() {
+    [ ${#1} -ge 8 ] || return 1
+    case "$1" in *:*) return 1 ;; esac
+    return 0
+}
+validate_timezone() {
+    case "$1" in ''|/*|*'..'*) return 1 ;; esac
+    [ -f "/usr/share/zoneinfo/$1" ]
+}
 
 normalize_mdns_name() {
     name=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
@@ -171,8 +188,7 @@ collect_identity() {
 
     secret "Contraseña de $admin_user (mínimo 8 caracteres): "
     admin_password=$REPLY
-    [ ${#admin_password} -ge 8 ] || die "La contraseña debe tener al menos 8 caracteres."
-    case "$admin_password" in *:*) die "La contraseña no puede contener ':'." ;; esac
+    validate_password "$admin_password" || die "La contraseña debe tener al menos 8 caracteres y no contener ':'."
     secret "Repite la contraseña de $admin_user: "
     [ "$REPLY" = "$admin_password" ] || die "Las contraseñas del usuario no coinciden."
 
@@ -182,8 +198,7 @@ collect_identity() {
         echo "root usará la misma contraseña que $admin_user."
     else
         root_password=$REPLY
-        [ ${#root_password} -ge 8 ] || die "La contraseña root debe tener al menos 8 caracteres."
-        case "$root_password" in *:*) die "La contraseña root no puede contener ':'." ;; esac
+        validate_password "$root_password" || die "La contraseña root debe tener al menos 8 caracteres y no contener ':'."
         secret "Repite la contraseña de root: "
         [ "$REPLY" = "$root_password" ] || die "Las contraseñas root no coinciden."
     fi
@@ -196,8 +211,7 @@ collect_identity() {
 
     ask "Zona horaria [UTC] (ej. America/Mexico_City): "
     timezone=${REPLY:-UTC}
-    case "$timezone" in /*|*'..'*) die "Zona horaria no válida." ;; esac
-    [ -f "/usr/share/zoneinfo/$timezone" ] || die "Zona horaria no disponible: $timezone"
+    validate_timezone "$timezone" || die "Zona horaria no disponible o no válida: $timezone"
 }
 
 installation_media_disk() {
@@ -258,15 +272,53 @@ is_efi_guid() {
     [ "$pt" = "$EFI_GUID" ]
 }
 
+is_bios_guid() {
+    pt=$(lsblk -dnro PARTTYPE "$1" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    [ "$pt" = "$BIOS_GUID" ]
+}
+
+partition_parent_disk() {
+    pk=$(lsblk -dnro PKNAME "$1" 2>/dev/null | tr -d ' ')
+    [ -n "$pk" ] || return 1
+    printf '/dev/%s\n' "$pk"
+}
+
+root_partition_reason() {
+    part=$1
+    type=$(lsblk -dnro TYPE "$part" 2>/dev/null | tr -d ' ')
+    [ "$type" = part ] || { printf 'no-es-particion\n'; return 0; }
+    ro=$(lsblk -dnro RO "$part" 2>/dev/null | tr -d ' ')
+    [ "$ro" = 0 ] || { printf 'solo-lectura\n'; return 0; }
+    parent=$(partition_parent_disk "$part" 2>/dev/null || true)
+    [ "$parent" = "$disk" ] || { printf 'otro-disco\n'; return 0; }
+    is_efi_guid "$part" && { printf 'particion-efi\n'; return 0; }
+    is_bios_guid "$part" && { printf 'bios-boot\n'; return 0; }
+    mnt=$(lsblk -dnro MOUNTPOINTS "$part" 2>/dev/null | tr -d '[:space:]')
+    [ -z "$mnt" ] || { printf 'montada\n'; return 0; }
+    size=$(lsblk -bdnro SIZE "$part" 2>/dev/null | tr -d ' ')
+    [ "${size:-0}" -ge "$MIN_ROOT" ] || { printf 'menor-1GiB\n'; return 0; }
+    printf 'ok\n'
+}
+
+root_partition_eligible() {
+    [ "$(root_partition_reason "$1")" = ok ]
+}
+
+efi_partition_candidate() {
+    part=$1
+    [ "$(partition_parent_disk "$part" 2>/dev/null || true)" = "$disk" ] || return 1
+    fs=$(lsblk -dnro FSTYPE "$part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+    is_efi_guid "$part" || [ "$fs" = vfat ] || [ "$fs" = fat ] || [ "$fs" = fat32 ]
+}
+
 make_root_partition_list() {
     file=$1
     : > "$file"
-    lsblk -npr -o NAME,TYPE,RO "$disk" | awk '$2=="part" && $3==0 {print $1}' | while IFS= read -r part; do
-        is_efi_guid "$part" && continue
-        mnt=$(lsblk -dnro MOUNTPOINTS "$part" 2>/dev/null | tr -d ' ')
-        [ -n "$mnt" ] && continue
-        size=$(lsblk -bdnro SIZE "$part" 2>/dev/null | tr -d ' ')
-        [ "${size:-0}" -ge "$MIN_ROOT" ] || continue
+    # A partition created in Windows may have no filesystem/signature at all.
+    # Refresh the kernel/udev view first and never require FSTYPE to select it.
+    refresh_partition_nodes
+    lsblk -npr -o NAME,TYPE "$disk" | awk '$2=="part" {print $1}' | while IFS= read -r part; do
+        root_partition_eligible "$part" || continue
         printf '%s\n' "$part"
     done > "$file"
 }
@@ -275,7 +327,14 @@ print_partition_menu() {
     file=$1
     idx=1
     while IFS= read -r part; do
-        meta=$(lsblk -dn -o SIZE,FSTYPE,LABEL,PARTLABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        size=$(lsblk -dnro SIZE "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        fs=$(lsblk -dnro FSTYPE "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        label=$(lsblk -dnro LABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        partlabel=$(lsblk -dnro PARTLABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')
+        [ -n "$fs" ] || fs='<sin formato>'
+        meta="$size $fs"
+        [ -z "$label" ] || meta="$meta $label"
+        [ -z "$partlabel" ] || meta="$meta [$partlabel]"
         printf ' %d) %-16s %s\n' "$idx" "$part" "$meta"
         idx=$((idx + 1))
     done < "$file"
@@ -301,12 +360,10 @@ select_root_partition() {
 make_efi_partition_list() {
     file=$1
     : > "$file"
+    refresh_partition_nodes
     lsblk -npr -o NAME,TYPE,RO "$disk" | awk '$2=="part" && $3==0 {print $1}' | while IFS= read -r part; do
         [ "$part" = "$root_part" ] && continue
-        fs=$(lsblk -dnro FSTYPE "$part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
-        if is_efi_guid "$part" || [ "$fs" = vfat ] || [ "$fs" = fat ] || [ "$fs" = fat32 ]; then
-            printf '%s\n' "$part"
-        fi
+        efi_partition_candidate "$part" && printf '%s\n' "$part"
     done > "$file"
 }
 
@@ -415,6 +472,8 @@ refresh_partition_nodes() {
     sync
     blockdev --rereadpt "$disk" >/dev/null 2>&1 || true
     partx -u "$disk" >/dev/null 2>&1 || partx -a "$disk" >/dev/null 2>&1 || true
+    command -v udevadm >/dev/null 2>&1 && udevadm trigger --subsystem-match=block >/dev/null 2>&1 || true
+    command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=5 >/dev/null 2>&1 || true
     command -v mdev >/dev/null 2>&1 && mdev -s >/dev/null 2>&1 || true
 }
 
@@ -594,7 +653,13 @@ EOF
     chroot "$TARGET" /sbin/rc-update del wpa_supplicant default >/dev/null 2>&1 || true
 
     if [ -d /etc/NetworkManager/system-connections ]; then
-        cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
+        for profile in /etc/NetworkManager/system-connections/*; do
+            [ -f "$profile" ] || continue
+            case "$(basename "$profile" | tr '[:upper:]' '[:lower:]')" in
+                *dex-installer*) continue ;;
+            esac
+            cp -a "$profile" "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
+        done
     fi
     wired_uuid=$(uuidgen)
     cat > "$TARGET/etc/NetworkManager/system-connections/dexos-wired.nmconnection" <<EOF
@@ -738,6 +803,10 @@ EOF
     chroot "$TARGET" /usr/sbin/grub-set-default 0 >/dev/null 2>&1 || true
 }
 
+tsv_safe() {
+    printf '%s' "$1" | tr '\t\r\n' '   '
+}
+
 show_installable_disks() {
     file="$WORK/check-disks"
     make_disk_list "$file"
@@ -746,6 +815,40 @@ show_installable_disks() {
         return 0
     fi
     print_disk_menu "$file"
+}
+
+run_inventory() {
+    command -v lsblk >/dev/null 2>&1 || die "Falta lsblk."
+    file="$WORK/inventory-disks"
+    make_disk_list "$file"
+    while IFS= read -r inv_disk; do
+        [ -n "$inv_disk" ] || continue
+        disk=$inv_disk
+        refresh_partition_nodes
+        size_b=$(lsblk -bdnro SIZE "$disk" 2>/dev/null | tr -d ' ')
+        size_h=$(tsv_safe "$(lsblk -dnro SIZE "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')")
+        model=$(tsv_safe "$(lsblk -dnro MODEL "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')")
+        tran=$(tsv_safe "$(lsblk -dnro TRAN "$disk" 2>/dev/null | sed 's/[[:space:]]*$//')")
+        if disk_bios_capable; then bios=yes; else bios=no; fi
+        if [ -d /sys/firmware/efi ]; then live_uefi=yes; else live_uefi=no; fi
+        printf 'DISK\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$disk" "${size_b:-0}" "$size_h" "$model" "$tran" "$bios" "$live_uefi"
+        lsblk -npr -o NAME,TYPE "$disk" | awk '$2=="part" {print $1}' | while IFS= read -r part; do
+            psize_b=$(lsblk -bdnro SIZE "$part" 2>/dev/null | tr -d ' ')
+            psize_h=$(tsv_safe "$(lsblk -dnro SIZE "$part" 2>/dev/null | sed 's/[[:space:]]*$//')")
+            fs=$(tsv_safe "$(lsblk -dnro FSTYPE "$part" 2>/dev/null | sed 's/[[:space:]]*$//')")
+            label=$(tsv_safe "$(lsblk -dnro LABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')")
+            partlabel=$(tsv_safe "$(lsblk -dnro PARTLABEL "$part" 2>/dev/null | sed 's/[[:space:]]*$//')")
+            parttype=$(tsv_safe "$(lsblk -dnro PARTTYPE "$part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')")
+            mountpoints=$(tsv_safe "$(lsblk -dnro MOUNTPOINTS "$part" 2>/dev/null | sed '/^[[:space:]]*$/d' | paste -sd, -)")
+            reason=$(root_partition_reason "$part")
+            [ "$reason" = ok ] && eligible=yes || eligible=no
+            if efi_partition_candidate "$part"; then efi=yes; else efi=no; fi
+            [ -n "$fs" ] || fs='sin-formato'
+            printf 'PART\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$part" "$disk" "${psize_b:-0}" "$psize_h" "$fs" "$label" "$partlabel" \
+                "$parttype" "$mountpoints" "$eligible" "$reason" "$efi"
+        done
+    done < "$file"
 }
 
 run_check() {
@@ -759,6 +862,103 @@ run_check() {
     echo "Comprobación completada: el instalador puede trabajar sin Internet."
 }
 
+acquire_install_lock() {
+    if mkdir "$INSTALL_LOCK" 2>/dev/null; then
+        LOCKED=1
+        printf '%s\n' "$$" > "$INSTALL_LOCK/pid"
+        return 0
+    fi
+    die "Ya hay una instalación de DexOS en curso."
+}
+
+validate_batch_config() {
+    [ "${DEXOS_CONFIRM:-}" = INSTALLAR ] || die "Falta confirmación explícita DEXOS_CONFIRM=INSTALLAR."
+
+    normalize_mdns_name "${DEXOS_HOSTNAME:-dexos-server.local}"
+    admin_user=${DEXOS_ADMIN_USER:-admin}
+    validate_user "$admin_user" || die "Usuario administrador no válido."
+    admin_password=${DEXOS_ADMIN_PASSWORD:-}
+    validate_password "$admin_password" || die "La contraseña del administrador debe tener al menos 8 caracteres y no contener ':'."
+    root_password=${DEXOS_ROOT_PASSWORD:-$admin_password}
+    validate_password "$root_password" || die "La contraseña root debe tener al menos 8 caracteres y no contener ':'."
+    ssh_root_login=${DEXOS_SSH_ROOT_LOGIN:-no}
+    case "$ssh_root_login" in yes|no) ;; *) die "DEXOS_SSH_ROOT_LOGIN debe ser yes o no." ;; esac
+    timezone=${DEXOS_TIMEZONE:-UTC}
+    validate_timezone "$timezone" || die "Zona horaria no disponible o no válida: $timezone"
+
+    install_mode=${DEXOS_INSTALL_MODE:-}
+    case "$install_mode" in whole|coexist) ;; *) die "DEXOS_INSTALL_MODE debe ser whole o coexist." ;; esac
+    disk=${DEXOS_DISK:-}
+    case "$disk" in /dev/*) ;; *) die "Disco de destino no válido." ;; esac
+    disk_file="$WORK/batch-disks"
+    make_disk_list "$disk_file"
+    grep -Fxq "$disk" "$disk_file" || die "$disk no es un disco instalable o es el medio Live."
+
+    if [ "$install_mode" = whole ]; then
+        disk_size=$(lsblk -bdnro SIZE "$disk" 2>/dev/null | tr -d ' ')
+        [ "${disk_size:-0}" -ge "$MIN_DISK" ] || die "DexOS Server requiere un disco de al menos 4 GiB."
+        if lsblk -nr -o MOUNTPOINTS "$disk" | grep -q '[^[:space:]]'; then
+            die "$disk contiene una partición montada."
+        fi
+        root_part=''
+        efi_part=''
+        bios_install=1
+        efi_install=1
+        return 0
+    fi
+
+    refresh_partition_nodes
+    root_part=${DEXOS_ROOT_PART:-}
+    [ -n "$root_part" ] || die "Falta DEXOS_ROOT_PART para coexistencia."
+    reason=$(root_partition_reason "$root_part")
+    [ "$reason" = ok ] || die "$root_part no puede usarse como raíz: $reason."
+
+    efi_part=${DEXOS_EFI_PART:-}
+    case "$efi_part" in none) efi_part='' ;; esac
+    if [ -n "$efi_part" ]; then
+        [ "$efi_part" != "$root_part" ] || die "La raíz y la ESP no pueden ser la misma partición."
+        efi_partition_candidate "$efi_part" || die "$efi_part no es una ESP/FAT del disco seleccionado."
+        fs=$(lsblk -dnro FSTYPE "$efi_part" 2>/dev/null | tr '[:upper:]' '[:lower:]' | tr -d ' ')
+        case "$fs" in vfat|fat|fat32) ;; *) die "$efi_part no contiene un filesystem FAT utilizable como ESP." ;; esac
+    fi
+    validate_boot_plan
+}
+
+perform_install() {
+    acquire_install_lock
+    prepare_storage
+    mount_target
+    install_offline_packages
+    write_target_config
+    configure_boot
+
+    say "Sincronizando datos"
+    sync
+    cleanup
+    trap - EXIT HUP INT TERM
+    echo
+    echo "DexOS Server se instaló correctamente."
+    echo "Nombre mDNS: $mdns_name"
+    echo "Después de arrancar puedes regenerar la detección de otros SO con: grub-update"
+    echo "Puedes cambiar el sistema predeterminado con: boot-order"
+    echo "Retira el medio Live y reinicia."
+}
+
+run_batch() {
+    preflight
+    validate_batch_config
+    say "Instalación no interactiva validada"
+    echo "Servidor: $mdns_name"
+    echo "Usuario: $admin_user"
+    echo "Disco: $disk"
+    echo "Modo: $install_mode"
+    if [ "$install_mode" = coexist ]; then
+        echo "Raíz: $root_part"
+        echo "ESP: ${efi_part:-ninguna}"
+    fi
+    perform_install
+}
+
 run_installer() {
     clear 2>/dev/null || true
     cat <<'EOF'
@@ -767,6 +967,7 @@ run_installer() {
 ========================================
 Instalador offline con NetworkManager, mDNS y GRUB inteligente.
 Puede usar un disco completo o coexistir con Windows/Linux.
+Las particiones sin formato también pueden elegirse como destino.
 EOF
 
     preflight
@@ -789,27 +990,13 @@ EOF
         echo "ATENCIÓN: se borrará TODO el disco $disk."
     fi
     confirm "¿Iniciar la instalación?" || exit 0
-
-    prepare_storage
-    mount_target
-    install_offline_packages
-    write_target_config
-    configure_boot
-
-    say "Sincronizando datos"
-    sync
-    cleanup
-    trap - EXIT HUP INT TERM
-    echo
-    echo "DexOS Server se instaló correctamente."
-    echo "Nombre mDNS: $mdns_name"
-    echo "Después de arrancar puedes regenerar la detección de otros SO con: grub-update"
-    echo "Puedes cambiar el sistema predeterminado con: boot-order"
-    echo "Retira el medio Live y reinicia."
+    perform_install
 }
 
 case "${1:-}" in
     --wifi) wifi_assistant ;;
     --check) run_check ;;
+    --inventory) run_inventory ;;
+    --batch) run_batch ;;
     '') run_installer ;;
 esac

@@ -184,3 +184,55 @@ También se validaron por separado los fallbacks de Linux cuando se fuerza a `os
 
 La ISO inmediatamente anterior, con la corrección de detección de otros SO pero sin Argon, se conservó para comparación en:
 `/workspace/yah-alpine/out/archive/DexOS-Server-edge-x86_64-pre-argon-d07930ad.iso`.
+
+
+# Instalador web Live + hotspot Wi-Fi robusto — 2026-09-08
+
+## Particiones sin formato
+El selector de coexistencia ya no depende de `FSTYPE`. Una partición creada desde Windows u otro sistema y dejada sin filesystem se acepta como raíz si:
+- es una partición real del disco seleccionado;
+- no está montada;
+- es escribible;
+- no es ESP ni BIOS Boot;
+- tiene al menos 1 GiB.
+
+Antes de inventariar se refrescan tabla y nodos (`blockdev --rereadpt`, `partx`, `udevadm trigger/settle`, fallback `mdev`). En QEMU se creó una GPT con `/dev/vda2` denominada `Windows empty slot`, sin ejecutar `mkfs`; `blkid` sólo mostró PARTLABEL/PARTUUID y `install --inventory` la devolvió como `sin-formato`, `eligible=yes`, `reason=ok`. El CGI web devolvió exactamente el mismo resultado.
+
+## Portal Live
+El Live incluye una UI multistep offline servida por `mini_httpd`, Tailwind 3.4.17 y Lucide 0.468.0 locales, backend CGI y los modos comunes `install --inventory` / `install --batch`. El hostname Live es `dexos-installer`, el portal es `http://dexos-installer.local/` y el acceso SSH temporal es `root/root`. Estas funciones son sólo del Live y no se copian al sistema instalado.
+
+## Hotspot `Dex-Installer`: causa y corrección
+La primera implementación podía no levantar AP porque la detección era demasiado temprana y la ISO no cubría firmware Intel ni varias familias adicionales. Además NetworkManager en Alpine necesita un `wpa_supplicant` D-Bus disponible para manejar Wi-Fi de forma fiable.
+
+Se corrigió con:
+- `wpa_supplicant -B -u` global iniciado antes de NetworkManager y revalidado por el monitor;
+- monitor persistente cada 2 s que detecta radios por `nmcli` + `iw` y acepta USB Wi-Fi conectado después del arranque;
+- desbloqueo `rfkill` cuando existe;
+- validación real de capacidad AP mediante `iw phy`;
+- reintento automático si NetworkManager aún no arrancó o el dispositivo apareció tarde;
+- estado detallado (`waiting`, `unsupported`, `active`, razón y adaptador) y log `/var/log/dex-installer-hotspot.log`;
+- firmware ampliado para Intel/iwlwifi, Realtek, MediaTek, Atheros, Broadcom/Cypress, Qualcomm, Marvell/NXP, Airoha, Atmel y `linux-firmware-other`.
+
+## Validación runtime real del flujo AP
+QEMU no emula una tarjeta Wi-Fi física, por lo que se validó con el módulo kernel `mac80211_hwsim`, que sí está presente dentro de `modloop-lts` de la ISO.
+
+Procedimiento:
+1. arrancar la ISO sin ningún radio Wi-Fi: estado `HOTSPOT=waiting`, `REASON=no-wifi-device`;
+2. después del boot ejecutar `modprobe mac80211_hwsim radios=2`, simulando un radio/USB que aparece tarde;
+3. el monitor detectó `wlan0 wlan1` automáticamente;
+4. `wlan0` cambió a `type AP`, SSID `Dex-Installer`, canal 11 e IPv4 `10.42.0.1/24`;
+5. `dnsmasq` arrancó;
+6. `wlan1` se conectó como cliente al SSID, obtuvo DHCP `10.42.0.122/24`;
+7. DNS cautivo respondió `portal.dex -> 10.42.0.1`;
+8. HTTP desde el cliente devolvió `DexOS Server Installer`.
+
+También se comprobó en el host físico de pruebas que su Intel `iwlwifi` (`wlan0`) anuncia modo `AP`; el nuevo `linux-firmware-intel` está incluido en la ISO.
+
+## ISO actual tras la corrección de hotspot
+- Ruta: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
+- Tamaño: `740294656` bytes (~706 MiB)
+- SHA-256: `91db6e9aa83a2c2e3abfc959bdaec8845a875815d6fe2c4b4276a11deb27ea3d`
+- APKINDEX offline: 194 paquetes.
+
+La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada como:
+`/workspace/yah-alpine/out/archive/DexOS-Server-edge-x86_64-pre-hotspotfix-2d470842.iso`.
