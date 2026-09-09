@@ -49,6 +49,14 @@ for cgi in "$WEB_ROOT"/cgi-bin/*.cgi; do sh -n "$cgi"; done
 if command -v node >/dev/null 2>&1; then node --check "$WEB_ROOT/app.js" >/dev/null; fi
 bash -n "$BUILD"
 grep -Fq "if '-comp xz' not in s" "$BUILD" || fail "build no fija SquashFS/XZ como invariante"
+grep -Fq -- '-comp xz -b 1M -tailends -exit-on-error' "$BUILD" || fail "modloop no fuerza bloque SquashFS máximo ni tailends"
+grep -Fq 'dexos-squashfs-xz-1m-tailends' "$BUILD" || fail "cache de kernel no se invalida al cambiar compresión del modloop"
+grep -Fq '_n=$((_n + 1)); [ $_n -lt 6 ] || return 1' "$BUILD" || fail "build no reintenta microcódigo ante fallo transitorio de red"
+grep -Fq 'xz -C crc32 -T1 -9e' "$BUILD" || fail "initramfs no se recomprime con XZ máximo"
+grep -Fq 'old_initrd_hash' "$BUILD" || fail "build no verifica que XZ preserve exactamente el payload del initramfs"
+grep -Fq -- "-zisofs level=9:block_size=128k" "$BUILD" || fail "ISO no aplica zisofs máximo a metadatos grandes"
+grep -Fq -- "-boot_image any replay" "$BUILD" || fail "optimización ISO no conserva estructura BIOS/UEFI"
+grep -Fq -- "-padding 0" "$BUILD" || fail "ISO conserva padding final innecesario"
 grep -Fq 'using cached APKINDEX after transient mirror failure' "$BUILD" || fail "build no tolera fallo transitorio del mirror con índice cacheado"
 grep -Fq 'x86|x86_64) mksfs="-Xbcj x86"' "$ROOT/alpine-root/usr/sbin/update-kernel" || fail "modloop no usa filtro BCJ x86 con XZ"
 pass "sintaxis shell, frontend y SquashFS/XZ"
@@ -291,6 +299,10 @@ grep -Fq 'NetworkManager no respondió después de 30 s.' "$WIFI_BOOT_HELPER" ||
 grep -Fq 'PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection' "$WIFI_BOOT_HELPER" || fail "helper no apunta al keyfile instalado"
 grep -Fq '/var/log/dexos-wifi-autoconnect.log' "$WIFI_BOOT_HELPER" || fail "helper de boot no deja diagnóstico"
 grep -Fq 'need dbus wpa_supplicant networkmanager' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no espera backend completo"
+grep -Fq 'STAMP=/var/lib/dexos/wifi-firstboot.done' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no tiene marca de primer arranque"
+grep -Fq ': > "$STAMP"' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no marca el bootstrap como ejecutado"
+grep -Fq 'rc-update del dexos-wifi-autoconnect default' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no se elimina del runlevel después del primer arranque"
+grep -Fq 'NetworkManager owns normal' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no documenta que NetworkManager toma el relevo"
 
 # Reproduce the physical-boot race: OpenRC has started the NetworkManager service,
 # but nmcli still reports "NetworkManager is not running" for a few moments.

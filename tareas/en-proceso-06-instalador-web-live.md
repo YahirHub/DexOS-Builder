@@ -161,3 +161,18 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] Recompilar e inspeccionar la ISO final; contiene `dns=none`, `rc-manager=unmanaged`, `1.1.1.1` y `8.8.8.8`.
 - [ ] Validar en hardware físico que `ping google.com` funcione inmediatamente tras reiniciar.
 - ISO SHA-256: `66845e0948e1262fbb53532ec0af1a61cc0732f070a230975ba0ba3b745c732b`.
+
+### Final 2026-09-09 — bootstrap Wi-Fi one-shot y compactación ISO
+- [x] Convertir `dexos-wifi-autoconnect` en bootstrap de una sola ejecución posterior a la instalación.
+- [x] Crear marca `/var/lib/dexos/wifi-firstboot.done` y quitar el servicio del runlevel después de ejecutarlo.
+- [x] Dejar los reinicios normales exclusivamente a cargo de `NetworkManager` y su perfil `autoconnect=true`.
+- [x] Reempaquetar modloop con SquashFS/XZ, BCJ x86, bloque/diccionario 1 MiB y `tailends`.
+- [x] Recompresar initramfs de gzip a XZ -9e validando SHA-256 del payload descomprimido.
+- [x] Aplicar zisofs nivel 9 a `System.map`/`config`, conservar El Torito BIOS/UEFI, MBR isohybrid y GPT, y quitar padding final.
+- [x] Invalidar caché de kernel al cambiar la compresión del modloop.
+- [x] Añadir reintentos de descarga para microcódigo ante DNS transitorio.
+- [x] Confirmar que no se eliminó nada: 320 rutas antes/ahora y 196 APK antes/ahora.
+- [x] Ejecutar tests estáticos y Go: PASS.
+- [x] Inspeccionar ISO final: modloop 1 MiB/tailends, initramfs XZ, servicio one-shot, BIOS+UEFI válidos.
+- [ ] Validación física final de instalación/reboot con esta ISO.
+- ISO final: 713031680 bytes (680 MiB), SHA-256 `116f639489075b29cb2068429ee01a575d754eac4650f0bceb430602598eaeb9`.

@@ -337,3 +337,15 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - Se añadieron pruebas que exigen `dns=none`, `rc-manager=unmanaged`, ambos resolvers públicos y que prohíben `rc-manager=file` dentro del instalador del target.
 
 - ISO recompilada e inspeccionada: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `66845e0948e1262fbb53532ec0af1a61cc0732f070a230975ba0ba3b745c732b`.
+
+# Corrección 2026-09-09: bootstrap Wi-Fi de una sola ejecución + ISO más compacta
+- Confirmado por hardware: Wi-Fi y DNS ya funcionan. El helper `dexos-wifi-connect` no debe ejecutarse en cada reboot, sólo como bootstrap tras la instalación.
+- `dexos-wifi-autoconnect` ahora es un servicio OpenRC de una sola ejecución: en el primer arranque posterior a instalar ejecuta el helper, crea `/var/lib/dexos/wifi-firstboot.done` modo 0600 y se elimina del runlevel `default`. En cualquier arranque posterior, si por alguna razón siguiera registrado, detecta la marca, se elimina del runlevel y no vuelve a ejecutar el helper. NetworkManager conserva `autoconnect=true` y queda como responsable nativo de reconectar Wi-Fi en los reinicios normales.
+- Se optimizó la ISO sin eliminar ningún archivo ni paquete. El conjunto de rutas de la ISO anterior y la nueva es idéntico: 320 entradas; repositorio offline: 196 APK en ambas.
+- `modloop-lts` sigue siendo SquashFS/XZ+BCJ x86, pero ahora usa bloques y diccionario de 1 MiB más `tailends`. Bajó de ~148.75 MiB a ~134.26 MiB manteniendo los mismos módulos/firmware.
+- `initramfs-lts` conserva exactamente el mismo payload CPIO pero se transcodifica de gzip a XZ `-9e` (el kernel tiene `CONFIG_RD_XZ=y`); el build compara SHA-256 del payload descomprimido antes y después. Tamaño final ~12.72 MiB.
+- El ISO9660 final aplica zisofs nivel 9 únicamente a `System.map-*` y `config-*`, archivos de metadatos no críticos para GRUB/Syslinux. Se reejecuta la estructura de boot El Torito y se conserva MBR isohybrid + GPT/UEFI; padding final se fija a 0.
+- Se invalidó explícitamente la caché de sección kernel cuando cambia esta política de SquashFS para evitar reutilizar un `modloop` antiguo de 128 KiB. También se agregaron reintentos acotados para descargar los microcódigos AMD/Intel ante fallos DNS transitorios.
+- Validación final: SquashFS block/dictionary 1048576, `Always-use-fragments` activo, initramfs con magic XZ válido, servicio one-shot presente, BIOS+UEFI El Torito presentes, MBR isohybrid y GPT presentes, tests estáticos PASS y `go test ./server/wifi-tui` PASS.
+- ISO final: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, exactamente 713031680 bytes = 680 MiB. SHA-256 `116f639489075b29cb2068429ee01a575d754eac4650f0bceb430602598eaeb9`.
+- Comparación contra la ISO previa de 742391808 bytes: reducción de 29360128 bytes (~28 MiB) sin eliminar ninguna ruta ni APK.

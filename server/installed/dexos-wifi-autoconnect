@@ -1,11 +1,32 @@
 #!/sbin/openrc-run
 
-description="DexOS Wi-Fi autoconnect"
-command="/usr/local/sbin/dexos-wifi-connect"
-command_background="no"
+description="DexOS Wi-Fi first-boot bootstrap"
+STAMP=/var/lib/dexos/wifi-firstboot.done
+PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection
 
 start_pre() {
-    [ -f /etc/NetworkManager/system-connections/dexos-wifi.nmconnection ]
+    [ -f "$PROFILE_FILE" ]
+}
+
+start() {
+    # The helper is only a post-install bootstrap. NetworkManager owns normal
+    # autoconnection on every later boot.
+    if [ -f "$STAMP" ]; then
+        rc-update del dexos-wifi-autoconnect default >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    ebegin "Preparando Wi-Fi de DexOS después de la instalación"
+    /usr/local/sbin/dexos-wifi-connect
+    rc=$?
+
+    mkdir -p "${STAMP%/*}"
+    : > "$STAMP"
+    chmod 0600 "$STAMP"
+    rc-update del dexos-wifi-autoconnect default >/dev/null 2>&1 || true
+
+    eend "$rc"
+    return "$rc"
 }
 
 depend() {
