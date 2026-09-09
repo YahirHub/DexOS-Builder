@@ -90,8 +90,11 @@ grep -Fq 'después del primer reinicio' "$WEB_ROOT/index.html" || fail "UI no ex
 grep -Fq 'id="reboot-btn"' "$WEB_ROOT/index.html" || fail "UI no ofrece reiniciar al finalizar"
 grep -Fq '[hidden] { display: none !important; }' "$WEB_ROOT/index.html" || fail "atributo hidden puede ser anulado por clases Tailwind"
 if grep -Fq '/cgi-bin/network.cgi' "$WEB_ROOT/app.js"; then fail "frontend aún intenta conectar el Live a Wi-Fi"; fi
-grep -Fq 'wifi_ssid: v.wifiSsid' "$WEB_ROOT/app.js" || fail "frontend no envía SSID diferido"
-grep -Fq 'wifi_password: v.wifiPassword' "$WEB_ROOT/app.js" || fail "frontend no envía contraseña diferida"
+grep -Fq 'state.wifiSsid = v.wifiSsid' "$WEB_ROOT/app.js" || fail "frontend no conserva el SSID Wi-Fi al salir del primer paso"
+grep -Fq 'wifi_ssid: state.wifiSsid' "$WEB_ROOT/app.js" || fail "frontend no envía el SSID Wi-Fi capturado"
+grep -Fq 'state.wifiPassword = v.wifiPassword' "$WEB_ROOT/app.js" || fail "frontend no conserva la contraseña Wi-Fi al salir del primer paso"
+grep -Fq "wifi_password: state.wifiPassword" "$WEB_ROOT/app.js" || fail "frontend no envía la contraseña Wi-Fi capturada"
+grep -Fq "wifi_has_password: state.wifiHasPassword ? 'yes' : 'no'" "$WEB_ROOT/app.js" || fail "frontend no marca si la contraseña Wi-Fi debía existir"
 grep -Fq '/cgi-bin/reboot.cgi' "$WEB_ROOT/app.js" || fail "frontend no usa backend de reinicio"
 grep -Fq "\$('wizard-footer').hidden = state.step === 4" "$WEB_ROOT/app.js" || fail "footer/siguiente sigue visible durante instalación"
 grep -Fq 'window.setInterval(loadLiveStatus, 3000)' "$WEB_ROOT/app.js" || fail "frontend no refresca estado del hotspot"
@@ -246,6 +249,12 @@ grep -Fq 'autoconnect-retries=0' "$INSTALLER" || fail "NetworkManager no reinten
 grep -Fq 'hidden=true' "$INSTALLER" || fail "perfil Wi-Fi no habilita sondeo activo"
 grep -Fq 'rc-update add dexos-wifi-autoconnect default' "$INSTALLER" || fail "servicio de autoconexión Wi-Fi no se habilita"
 grep -Fq 'key-mgmt=wpa-psk' "$INSTALLER" || fail "perfil Wi-Fi protegido no configura WPA-PSK"
+grep -Fq 'psk-flags=0' "$INSTALLER" || fail "perfil Wi-Fi no marca el PSK como secreto persistente"
+grep -Fq "grep -q '^psk=.'" "$INSTALLER" || fail "instalador no verifica que el PSK llegue al keyfile"
+grep -Fq "802-11-wireless-security.psk:%s" "$INSTALLER" || fail "instalador no crea respaldo passwd-file para la credencial WPA"
+grep -Fq 'chmod 0600 "$TARGET/etc/dexos/wifi.passwd"' "$INSTALLER" || fail "respaldo de credencial Wi-Fi no queda privado"
+grep -Fq 'wifi_has_password' "$WEB_ROOT/cgi-bin/install.cgi" || fail "CGI no detecta pérdida de contraseña Wi-Fi"
+grep -Fq 'La contraseña Wi-Fi se perdió antes de iniciar la instalación' "$WEB_ROOT/cgi-bin/install.cgi" || fail "CGI no aborta si el navegador pierde la contraseña Wi-Fi"
 if grep -Fq 'wifi-firstboot.conf' "$INSTALLER"; then fail "instalador conserva configuración Wi-Fi transitoria"; fi
 if grep -Fq 'dexos-wifi-firstboot' "$INSTALLER"; then fail "instalador sigue habilitando servicio Wi-Fi de primer arranque"; fi
 grep -Fq 'udev udev-trigger udev-settle' "$INSTALLER" || fail "coldplug udev no configurado en sistema instalado"
@@ -269,6 +278,8 @@ grep -Fq 'nmcliWithInput' "$WIFI_TUI" || fail "TUI no entrega secretos por stdin
 grep -Fq 'safeText' "$WIFI_TUI" || fail "TUI no neutraliza caracteres de control del SSID"
 grep -Fq 'connection.autoconnect-retries 0' "$WIFI_BOOT_HELPER" || fail "helper de boot no fija reintentos infinitos"
 grep -Fq 'nmcli --wait 35 connection up' "$WIFI_BOOT_HELPER" || fail "helper de boot no activa explícitamente el perfil"
+grep -Fq 'passwd-file "$PASSWD_FILE"' "$WIFI_BOOT_HELPER" || fail "helper de boot no usa el respaldo de credencial WPA"
+grep -Fq 'PASSWD_FILE=/etc/dexos/wifi.passwd' "$WIFI_BOOT_HELPER" || fail "helper no apunta al archivo de credencial de respaldo"
 grep -Fq 'nmcli connection load "$PROFILE_FILE"' "$WIFI_BOOT_HELPER" || fail "helper de boot no carga explícitamente el keyfile si NetworkManager lo omite"
 grep -Fq 'nmcli general status' "$WIFI_BOOT_HELPER" || fail "helper de boot no espera a que NetworkManager esté realmente listo"
 grep -Fq 'NetworkManager no respondió después de 30 s.' "$WIFI_BOOT_HELPER" || fail "helper de boot no limita la espera de NetworkManager"
@@ -330,6 +341,66 @@ grep -Fq 'conectado: DexOS WiFi' "$MOCK/stdout" || fail "helper Wi-Fi no contin�
 rm -rf "$MOCK"
 trap - EXIT HUP INT TERM
 pass "autoconexión Wi-Fi espera la disponibilidad real de NetworkManager"
+
+# Reproduce the newest physical failure: the profile exists and NetworkManager is
+# ready, but the loaded connection has no usable PSK. The root-only passwd-file
+# must supply the secret without exposing it in argv or logs.
+MOCK=$(mktemp -d)
+trap 'rm -rf "$MOCK"' EXIT HUP INT TERM
+mkdir -p "$MOCK/bin" "$MOCK/etc/NetworkManager/system-connections" "$MOCK/etc/dexos"
+printf dummy > "$MOCK/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+printf '802-11-wireless-security.psk:Secret123!\n' > "$MOCK/etc/dexos/wifi.passwd"
+chmod 0600 "$MOCK/etc/dexos/wifi.passwd"
+cp "$WIFI_BOOT_HELPER" "$MOCK/helper"
+python3 - "$MOCK/helper" "$MOCK/log" "$MOCK/bin" "$MOCK/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" "$MOCK/etc/dexos/wifi.passwd" <<'PY2'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); log=sys.argv[2]; bindir=sys.argv[3]; profile=sys.argv[4]; passwd=sys.argv[5]
+s=p.read_text()
+s=s.replace('LOG=/var/log/dexos-wifi-autoconnect.log', f'LOG={log}')
+s=s.replace('PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection', f'PROFILE_FILE={profile}')
+s=s.replace('PASSWD_FILE=/etc/dexos/wifi.passwd', f'PASSWD_FILE={passwd}')
+s=s.replace('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', f'PATH={bindir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
+p.write_text(s)
+PY2
+cat > "$MOCK/bin/nmcli" <<'EOF'
+#!/bin/sh
+case "$*" in
+  'general status') exit 0 ;;
+  'connection reload') exit 0 ;;
+  '-t -f NAME connection show') printf 'DexOS WiFi\n'; exit 0 ;;
+  '-g 802-11-wireless.ssid connection show DexOS WiFi') printf 'Google\n'; exit 0 ;;
+  'connection modify DexOS WiFi connection.autoconnect yes connection.autoconnect-retries 0') exit 0 ;;
+  'radio wifi on') exit 0 ;;
+  '-t -f DEVICE,TYPE device status') printf 'wlan0:wifi\n'; exit 0 ;;
+  '-t -f NAME,TYPE connection show --active') exit 0 ;;
+  'device wifi rescan ifname wlan0 ssid Google') exit 0 ;;
+  *'connection up DexOS WiFi ifname wlan0 passwd-file '*)
+    passwd=${*##* passwd-file }
+    grep -Fq '802-11-wireless-security.psk:Secret123!' "$passwd" || exit 9
+    exit 0
+    ;;
+  '-g GENERAL.STATE device show wlan0') printf '100 (connected)\n'; exit 0 ;;
+  '-g GENERAL.CONNECTION device show wlan0') printf 'DexOS WiFi\n'; exit 0 ;;
+  '--show-secrets -g 802-11-wireless-security.psk connection show DexOS WiFi') exit 0 ;;
+  *) echo "unexpected nmcli call: $*" >&2; exit 3 ;;
+esac
+EOF
+cat > "$MOCK/bin/sleep" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$MOCK/helper" "$MOCK/bin/nmcli" "$MOCK/bin/sleep"
+"$MOCK/helper" > "$MOCK/stdout" 2>&1 || fail "helper Wi-Fi no usa passwd-file cuando el perfil carece de PSK"
+grep -Fq 'credencial WPA de respaldo disponible' "$MOCK/stdout" || fail "helper no detecta respaldo WPA"
+grep -Fq 'credencial WPA de respaldo conservada para próximos arranques' "$MOCK/stdout" || fail "helper elimina respaldo antes de confirmar persistencia del PSK"
+grep -Fq 'conectado: DexOS WiFi' "$MOCK/stdout" || fail "helper no conecta usando passwd-file"
+if grep -Fq 'Secret123!' "$MOCK/stdout" "$MOCK/log"; then fail "helper Wi-Fi filtra la contraseña en salida/log"; fi
+[ -f "$MOCK/etc/dexos/wifi.passwd" ] || fail "helper borró respaldo WPA sin confirmar que NetworkManager guardó el PSK"
+rm -rf "$MOCK"
+trap - EXIT HUP INT TERM
+pass "autoconexión Wi-Fi recupera PSK ausente mediante passwd-file"
+
 grep -Fq 'insmod gfxmenu' "$GRUB_THEME_GEN" || fail "generador Argon no carga gfxmenu"
 grep -Fq 'search --no-floppy --file --set=dex_theme_root /boot/grub/themes/argon/theme.txt' "$GRUB_THEME_GEN" || fail "generador Argon no localiza la partición del tema"
 grep -Fq 'loadfont ($dex_theme_root)/boot/grub/themes/argon/Terminus_16.pf2' "$GRUB_THEME_GEN" || fail "generador Argon no carga fuente 16"

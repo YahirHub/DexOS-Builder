@@ -316,3 +316,14 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - Se añadió una prueba determinista que simula exactamente el arranque físico: los tres primeros `nmcli general status` devuelven `NetworkManager is not running`, el cuarto queda listo, el keyfile se carga y el helper termina en `conectado: DexOS WiFi`.
 - Pruebas estáticas y `go test ./server/wifi-tui` pasan. La ISO recompilada contiene el helper con la espera real de NetworkManager.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `2bde18b2991f7f75046eca31974ab7e2f0ff8bf4f1d4cc27a546d86fe1a8d4db`.
+
+
+# Corrección 2026-09-09: PSK Wi-Fi ausente durante activación
+- La nueva prueba física confirmó que la carrera de NetworkManager ya quedó corregida: el daemon estuvo listo tras 1 s, el perfil `DexOS WiFi` se cargó y `wlan0` fue detectado. El nuevo fallo fue distinto: `Passwords or encryption keys are required` y `Secrets were required, but not provided`, lo que demuestra que la activación llegó sin un PSK utilizable.
+- El frontend web ahora captura SSID/contraseña al abandonar el primer paso y los conserva en el estado del wizard; la instalación final ya no vuelve a depender del contenido vivo del `<input type=password>` varios pasos después. El request incluye además `wifi_has_password=yes|no`; el CGI aborta si el navegador indicó que había contraseña pero ésta llegó vacía, en lugar de instalar silenciosamente un perfil roto.
+- El keyfile instalado conserva `psk=` y ahora fija explícitamente `psk-flags=0`. El instalador verifica que el PSK realmente exista antes de terminar.
+- Como defensa adicional, el instalador crea `/etc/dexos/wifi.passwd` modo `0600` (directorio `0700`) con el formato oficial de `nmcli connection up ... passwd-file`: `802-11-wireless-security.psk:<clave>`. El helper usa ese archivo durante la activación si existe. La contraseña no se imprime ni se pasa por argv.
+- Después de conectar, el helper consulta el perfil con `nmcli --show-secrets`; si NetworkManager ya conserva el PSK, elimina el respaldo. Si no, lo mantiene para los siguientes arranques.
+- Se añadió una prueba determinista del fallo exacto observado: perfil presente, NetworkManager listo, PSK ausente en el perfil; la conexión sólo tiene éxito cuando el helper entrega `passwd-file`. También verifica que la contraseña no aparece en stdout ni en el log.
+- Pruebas estáticas PASS y `go test ./server/wifi-tui` PASS. La ISO final fue extraída y se confirmó que contiene el snapshot de contraseña, `psk-flags=0`, el respaldo `wifi.passwd` y el helper con `passwd-file`.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `9da75324d34b81bb7a84d91f14e102c80847ddc8a5089806d02aa103dc7f4c10`.

@@ -20,6 +20,9 @@
     rootFreeStart: '',
     rootFreeSectors: '',
     efiPart: '',
+    wifiSsid: '',
+    wifiPassword: '',
+    wifiHasPassword: false,
     installing: false
   };
 
@@ -421,6 +424,13 @@
     return '';
   }
 
+  function captureWifiSetup() {
+    const v = identityValues();
+    state.wifiSsid = v.wifiSsid;
+    state.wifiPassword = v.wifiPassword;
+    state.wifiHasPassword = v.wifiPassword.length > 0;
+  }
+
   function validateIdentity() {
     const v = identityValues();
     const host = v.hostname.toLowerCase().replace(/\.$/, '').replace(/\.local$/, '');
@@ -447,7 +457,7 @@
     addSummaryRow('Servidor', v.hostname || 'dexos-server.local');
     addSummaryRow('Administrador', v.adminUser || 'admin');
     addSummaryRow('Zona horaria', v.timezone || 'UTC');
-    addSummaryRow('Wi-Fi tras reiniciar', v.wifiSsid || 'No preconfigurado');
+    addSummaryRow('Wi-Fi tras reiniciar', state.wifiSsid || 'No preconfigurado');
     addSummaryRow('Root por SSH', v.rootSsh === 'yes' ? 'Sí' : 'No');
     addSummaryRow('Modo', state.mode === 'whole' ? 'Disco completo' : 'Coexistencia');
     addSummaryRow('Disco', `${state.disk}${disk?.size ? ` · ${disk.size}` : ''}`, true);
@@ -482,8 +492,9 @@
       root_password: v.rootPassword,
       ssh_root_login: v.rootSsh,
       timezone: v.timezone,
-      wifi_ssid: v.wifiSsid,
-      wifi_password: v.wifiPassword,
+      wifi_ssid: state.wifiSsid,
+      wifi_password: state.wifiPassword,
+      wifi_has_password: state.wifiHasPassword ? 'yes' : 'no',
       install_mode: state.mode,
       disk: state.disk,
       root_part: state.mode === 'coexist' ? state.rootPart : '',
@@ -584,6 +595,7 @@
       await startInstall();
       return;
     }
+    if (state.step === 0) captureWifiSetup();
     showStep(state.step + 1);
   });
 

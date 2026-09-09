@@ -882,6 +882,7 @@ EOF
 [wifi-security]
 key-mgmt=wpa-psk
 psk=$wifi_password_key
+psk-flags=0
 EOF
         fi
         cat >> "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" <<'EOF'
@@ -896,6 +897,18 @@ addr-gen-mode=default
 [proxy]
 EOF
         chmod 0600 "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+        if [ -n "${wifi_password:-}" ]; then
+            grep -q '^psk=.' "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" \
+                || die "El perfil Wi-Fi perdió la contraseña antes de guardarse."
+            grep -Fxq 'psk-flags=0' "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" \
+                || die "El perfil Wi-Fi no conserva el secreto WPA-PSK en disco."
+            mkdir -p "$TARGET/etc/dexos"
+            chmod 0700 "$TARGET/etc/dexos"
+            printf '802-11-wireless-security.psk:%s\n' "$wifi_password" > "$TARGET/etc/dexos/wifi.passwd"
+            chmod 0600 "$TARGET/etc/dexos/wifi.passwd"
+        else
+            rm -f "$TARGET/etc/dexos/wifi.passwd" 2>/dev/null || true
+        fi
         chroot "$TARGET" /sbin/rc-update add dexos-wifi-autoconnect default >/dev/null 2>&1 \
             || die "No se pudo habilitar el autoconector Wi-Fi de DexOS."
         unset wifi_password wifi_password_key wifi_ssid_key

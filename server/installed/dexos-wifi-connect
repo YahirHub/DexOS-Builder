@@ -3,6 +3,7 @@ set -u
 
 PROFILE='DexOS WiFi'
 PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection
+PASSWD_FILE=/etc/dexos/wifi.passwd
 LOG=/var/log/dexos-wifi-autoconnect.log
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -63,6 +64,9 @@ fi
 ssid=$(nmcli -g 802-11-wireless.ssid connection show "$PROFILE" 2>/dev/null | head -n 1)
 [ -n "$ssid" ] || ssid='(SSID desconocido)'
 log "red configurada: $ssid"
+if [ -f "$PASSWD_FILE" ]; then
+    log 'credencial WPA de respaldo disponible.'
+fi
 
 # NetworkManager owns retry policy. Zero means retry autoconnect forever.
 nmcli connection modify "$PROFILE" connection.autoconnect yes connection.autoconnect-retries 0 >>"$LOG" 2>&1 || true
@@ -97,10 +101,25 @@ sleep 2
 log "activando '$PROFILE'..."
 tmp=/run/dexos-wifi-connect.$$
 trap 'rm -f "$tmp"' EXIT HUP INT TERM
-if nmcli --wait 35 connection up "$PROFILE" ifname "$dev" >"$tmp" 2>&1; then
+if [ -f "$PASSWD_FILE" ]; then
+    nmcli --wait 35 connection up "$PROFILE" ifname "$dev" passwd-file "$PASSWD_FILE" >"$tmp" 2>&1
+    up_rc=$?
+else
+    nmcli --wait 35 connection up "$PROFILE" ifname "$dev" >"$tmp" 2>&1
+    up_rc=$?
+fi
+if [ "$up_rc" -eq 0 ]; then
     cat "$tmp" >>"$LOG"
     state=$(nmcli -g GENERAL.STATE device show "$dev" 2>/dev/null | head -n 1)
     conn=$(nmcli -g GENERAL.CONNECTION device show "$dev" 2>/dev/null | head -n 1)
+    if [ -f "$PASSWD_FILE" ]; then
+        if nmcli --show-secrets -g 802-11-wireless-security.psk connection show "$PROFILE" 2>/dev/null | grep -q .; then
+            rm -f "$PASSWD_FILE"
+            log 'NetworkManager ya conserva la credencial WPA; respaldo eliminado.'
+        else
+            log 'credencial WPA de respaldo conservada para próximos arranques.'
+        fi
+    fi
     log "conectado: ${conn:-$PROFILE} (${state:-estado desconocido})."
     exit 0
 fi

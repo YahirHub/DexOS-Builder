@@ -32,6 +32,7 @@ ssh_root_login='no'
 timezone='UTC'
 wifi_ssid=''
 wifi_password=''
+wifi_has_password='no'
 install_mode=''
 disk=''
 root_part=''
@@ -59,6 +60,7 @@ for pair in "$@"; do
         timezone) timezone=$value ;;
         wifi_ssid) wifi_ssid=$value ;;
         wifi_password) wifi_password=$value ;;
+        wifi_has_password) wifi_has_password=$value ;;
         install_mode) install_mode=$value ;;
         disk) disk=$value ;;
         root_part) root_part=$value ;;
@@ -69,14 +71,17 @@ for pair in "$@"; do
     esac
 done
 
-for value in "$hostname" "$admin_user" "$admin_password" "$root_password" "$ssh_root_login" "$timezone" "$wifi_ssid" "$wifi_password" "$install_mode" "$disk" "$root_part" "$root_free_start" "$root_free_sectors" "$efi_part" "$confirm"; do
+for value in "$hostname" "$admin_user" "$admin_password" "$root_password" "$ssh_root_login" "$timezone" "$wifi_ssid" "$wifi_password" "$wifi_has_password" "$install_mode" "$disk" "$root_part" "$root_free_start" "$root_free_sectors" "$efi_part" "$confirm"; do
     if printf '%s' "$value" | LC_ALL=C grep -q '[[:cntrl:]]'; then
         reply_error 'La solicitud contiene caracteres de control.'
     fi
 done
 
 [ "$confirm" = INSTALLAR ] || reply_error 'Confirma la instalación desde el último paso.'
+case "$wifi_has_password" in yes|no) ;; *) reply_error 'Estado de contraseña Wi-Fi inválido.' ;; esac
 if [ -z "$wifi_ssid" ] && [ -n "$wifi_password" ]; then reply_error 'Escribe el nombre de la red Wi-Fi o borra la contraseña.'; fi
+if [ "$wifi_has_password" = yes ] && [ -z "$wifi_password" ]; then reply_error 'La contraseña Wi-Fi se perdió antes de iniciar la instalación. Vuelve al primer paso y escríbela de nuevo.'; fi
+if [ "$wifi_has_password" = no ] && [ -n "$wifi_password" ]; then reply_error 'El estado de la contraseña Wi-Fi no coincide con el formulario.'; fi
 if [ -n "$wifi_ssid" ]; then
     [ "$(printf '%s' "$wifi_ssid" | wc -c | tr -d ' ')" -le 32 ] || reply_error 'El SSID Wi-Fi supera 32 bytes.'
     if [ -n "$wifi_password" ]; then

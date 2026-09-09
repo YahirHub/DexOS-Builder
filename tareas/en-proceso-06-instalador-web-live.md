@@ -137,3 +137,16 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] Recompilar la ISO y comprobar que el helper incluido contiene `wait_for_networkmanager` y la espera por `nmcli general status`.
 - [ ] Validar en hardware físico que desaparezca `NetworkManager is not running`, el perfil se cargue y el Wi-Fi quede conectado.
 - ISO SHA-256: `2bde18b2991f7f75046eca31974ab7e2f0ff8bf4f1d4cc27a546d86fe1a8d4db`.
+
+
+### Fix físico 2026-09-09 — PSK ausente en el perfil Wi-Fi
+- [x] Interpretar el nuevo log: NetworkManager ya está listo y el perfil existe, pero la activación falla por secreto WPA ausente (`Secrets were required, but not provided`).
+- [x] Conservar SSID/contraseña en el estado del wizard al salir del primer paso para que un `<input type=password>` oculto/limpiado después no pueda vaciar la configuración final.
+- [x] Añadir `wifi_has_password` y abortar en el CGI si el navegador perdió una contraseña que sí había sido introducida.
+- [x] Fijar `psk-flags=0` y verificar que el keyfile contiene `psk=` antes de finalizar la instalación.
+- [x] Crear `/etc/dexos/wifi.passwd` modo 0600 como respaldo de credencial y usarlo con `nmcli connection up ... passwd-file` sin exponer la clave en argv/logs.
+- [x] Eliminar el respaldo sólo si `nmcli --show-secrets` confirma que NetworkManager ya conserva el PSK; si no, mantenerlo para siguientes arranques.
+- [x] Añadir smoke test que reproduce perfil sin PSK y confirma conexión únicamente mediante `passwd-file`, sin filtrar la contraseña.
+- [x] Recompilar e inspeccionar la ISO final; pruebas estáticas y Go PASS.
+- [ ] Validar en hardware físico que el boot muestre `credencial WPA de respaldo disponible` y termine en `conectado: DexOS WiFi`.
+- ISO SHA-256: `9da75324d34b81bb7a84d91f14e102c80847ddc8a5089806d02aa103dc7f4c10`.
