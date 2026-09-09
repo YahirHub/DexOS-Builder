@@ -2,6 +2,7 @@
 set -u
 
 PROFILE='DexOS WiFi'
+PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection
 LOG=/var/log/dexos-wifi-autoconnect.log
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
@@ -23,7 +24,20 @@ command -v nmcli >/dev/null 2>&1 || { fail 'nmcli no está disponible.'; exit 1;
 log 'cargando perfil guardado de NetworkManager...'
 nmcli connection reload >>"$LOG" 2>&1 || true
 if ! nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$PROFILE"; then
-    fail "no existe el perfil '$PROFILE'."
+    if [ -f "$PROFILE_FILE" ]; then
+        log 'el keyfile existe pero NetworkManager aún no lo registró; cargándolo explícitamente...'
+        if ! nmcli connection load "$PROFILE_FILE" >>"$LOG" 2>&1; then
+            fail "NetworkManager rechazó $PROFILE_FILE. Revisa $LOG."
+            exit 1
+        fi
+    fi
+fi
+if ! nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$PROFILE"; then
+    if [ -f "$PROFILE_FILE" ]; then
+        fail "el archivo $PROFILE_FILE existe, pero NetworkManager no publicó el perfil '$PROFILE'."
+    else
+        fail "no existe $PROFILE_FILE; la instalación no dejó el perfil Wi-Fi esperado."
+    fi
     exit 1
 fi
 

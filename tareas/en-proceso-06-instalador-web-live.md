@@ -116,3 +116,15 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] El build tolera un fallo DNS transitorio del mirror sólo cuando ya existe un APKINDEX cacheado firmado; paquetes ausentes siguen haciendo fallar el build.
 - [x] ISO final: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, `742391808` bytes (~708 MiB), SHA-256 `8549d2e1a9a7e4d99b590a0fd32233d9c76d183db9164f91a95b93ac56bca31c`, APKINDEX 195 paquetes.
 - [ ] Validar en el hardware físico del usuario que el servicio muestre el diagnóstico durante boot y que la conexión real se complete; después probar el TUI `wifi` y el GRUB Argon.
+
+
+### Fix físico 2026-09-09 — perfil no registrado y Argon
+- [x] Reproducir/interpretar el fallo real: servicio habilitado + keyfile esperado, pero `nmcli connection show` no publicaba `DexOS WiFi`.
+- [x] Validar el keyfile exacto con NetworkManager 1.58.0 (`nmcli connection load` => éxito).
+- [x] Hacer que `dexos-wifi-connect` cargue explícitamente `dexos-wifi.nmconnection` cuando `connection reload` no lo registra.
+- [x] Añadir mensajes diferenciados para archivo ausente vs keyfile rechazado/no publicado.
+- [x] Probar con `nmcli` simulado el caso exacto archivo-existe/perfil-no-registrado y confirmar conexión posterior.
+- [x] Añadir `/etc/grub.d/05_dexos_theme` para forzar Argon directamente y localizar la partición del tema mediante `search --file`.
+- [x] Recompilar y comprobar que la ISO contiene helper, generador Argon y pruebas actualizadas.
+- [ ] Validar en hardware físico que el boot muestre la carga explícita del perfil y que GRUB renderice Argon.
+- ISO SHA-256: `142a7694f5acd387d4574ab0e644017da0591978b48aa9ca606ef9897c0df8a1`.

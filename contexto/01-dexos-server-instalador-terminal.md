@@ -297,3 +297,13 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - El builder recibió un fallback acotado para fallos DNS temporales del mirror: sólo usa APKINDEX cacheado si ya existe; una dependencia no cacheada sigue abortando el build.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, `742391808` bytes (~708 MiB), SHA-256 `8549d2e1a9a7e4d99b590a0fd32233d9c76d183db9164f91a95b93ac56bca31c`, APKINDEX offline 195 paquetes.
 - Pendiente real: prueba física del nuevo servicio Wi-Fi/TUI y confirmación visual de Argon en el equipo del usuario.
+
+
+# Corrección 2026-09-09: keyfile Wi-Fi no registrado + Argon forzado
+- Hardware físico mostró `DexOS Wi-Fi: ERROR: no existe el perfil 'DexOS WiFi'` aunque el servicio `dexos-wifi-autoconnect` sí estaba habilitado. Como el servicio sólo se habilita cuando se escribió el keyfile, el problema era que NetworkManager no lo había publicado todavía al consultar `connection show`.
+- El helper ahora apunta explícitamente a `/etc/NetworkManager/system-connections/dexos-wifi.nmconnection`: primero hace `connection reload`; si el perfil aún no aparece pero el archivo existe, ejecuta `nmcli connection load <keyfile>` y vuelve a comprobar. Si NetworkManager rechaza el archivo, deja el error exacto en `/var/log/dexos-wifi-autoconnect.log`.
+- El formato exacto del keyfile fue validado contra NetworkManager 1.58.0 con `nmcli connection load`: retorna 0 y publica el perfil como `wifi`/autoconnect.
+- Smoke test determinista reprodujo exactamente el caso observado (archivo existente pero perfil no registrado): la carga explícita registró el perfil y el helper llegó a `conectado: DexOS WiFi`.
+- Para GRUB instalado se añadió `/etc/grub.d/05_dexos_theme`, que fuerza `all_video`, `gfxterm`, `gfxmenu`, PNG, localiza la partición que contiene `/boot/grub/themes/argon/theme.txt`, carga las fuentes Terminus y fija Argon directamente antes de generar la entrada principal. Esto evita depender sólo de la lógica de tema de `00_header`/`/etc/default/grub`.
+- El tema conserva `1920x1080,auto`, `gfxpayload=keep`, `Terminus_16.pf2` (`Console Bold 16`) y `Terminus_24.pf2` (`Display Bold 24`).
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes, SHA-256 `142a7694f5acd387d4574ab0e644017da0591978b48aa9ca606ef9897c0df8a1`.

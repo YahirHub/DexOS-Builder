@@ -833,16 +833,18 @@ EOF
     [ -x "$installed_assets/diskinfo" ] || die "Falta diskinfo."
     [ -x "$installed_assets/dexos-wifi-connect" ] || die "Falta el helper Wi-Fi de arranque."
     [ -x "$installed_assets/dexos-wifi-autoconnect" ] || die "Falta el servicio Wi-Fi de arranque."
+    [ -x "$installed_assets/05_dexos_theme" ] || die "Falta el generador del tema Argon de GRUB."
     [ -x "$installed_assets/09_dexos_linux" ] || die "Falta la entrada GRUB principal de DexOS."
     cp "$installed_assets/wifi" "$TARGET/usr/local/bin/wifi"
     cp "$installed_assets/diskinfo" "$TARGET/usr/local/bin/diskinfo"
     cp "$installed_assets/dexos-wifi-connect" "$TARGET/usr/local/sbin/dexos-wifi-connect"
     cp "$installed_assets/dexos-wifi-autoconnect" "$TARGET/etc/init.d/dexos-wifi-autoconnect"
+    cp "$installed_assets/05_dexos_theme" "$TARGET/etc/grub.d/05_dexos_theme"
     cp "$installed_assets/09_dexos_linux" "$TARGET/etc/grub.d/09_dexos_linux"
     cp "$installed_assets/10-dexos-diskinfo.sh" "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
     chmod 0755 "$TARGET/usr/local/bin/wifi" "$TARGET/usr/local/bin/diskinfo" \
         "$TARGET/usr/local/sbin/dexos-wifi-connect" "$TARGET/etc/init.d/dexos-wifi-autoconnect" \
-        "$TARGET/etc/grub.d/09_dexos_linux"
+        "$TARGET/etc/grub.d/05_dexos_theme" "$TARGET/etc/grub.d/09_dexos_linux"
     chmod 0644 "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
 
     if [ -d /etc/NetworkManager/system-connections ]; then
@@ -932,7 +934,7 @@ EOF
     ln -sf grub-update "$TARGET/usr/local/sbin/update-grub"
     cp /usr/share/dexos/grub.d/31_dexos_other_os "$TARGET/etc/grub.d/31_dexos_other_os"
     chmod 0755 "$TARGET/usr/local/sbin/grub-update" "$TARGET/etc/grub.d/31_dexos_other_os" \
-        "$TARGET/etc/grub.d/09_dexos_linux"
+        "$TARGET/etc/grub.d/05_dexos_theme" "$TARGET/etc/grub.d/09_dexos_linux"
     # DexOS owns the primary Linux menu entry. os-prober and the fallback remain
     # executable after it, so detected systems are rendered below DexOS.
     chmod -x "$TARGET/etc/grub.d/10_linux" 2>/dev/null || true

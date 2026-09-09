@@ -1,0 +1,19 @@
+#!/bin/sh
+cat <<'EOF_GRUB'
+# DexOS Argon theme: force graphical GRUB independently of distro defaults.
+insmod all_video
+insmod gfxterm
+insmod gfxmenu
+insmod png
+search --no-floppy --file --set=dex_theme_root /boot/grub/themes/argon/theme.txt
+if [ -n "$dex_theme_root" ]; then
+    if loadfont ($dex_theme_root)/boot/grub/themes/argon/Terminus_16.pf2; then
+        loadfont ($dex_theme_root)/boot/grub/themes/argon/Terminus_24.pf2
+        set gfxmode=1920x1080,auto
+        set gfxpayload=keep
+        terminal_output gfxterm
+        set theme=($dex_theme_root)/boot/grub/themes/argon/theme.txt
+        export theme
+    fi
+fi
+EOF_GRUB
