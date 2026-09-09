@@ -85,3 +85,12 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - Reproducción `mac80211_hwsim`: sin scan actualizado, `nmcli` devolvió `No network with SSID ... found`; después de un scan dirigido, el mismo comando de conexión funcionó.
 - Nuevo servicio: espera 30 s por dispositivo, fuerza scan del SSID, prueba hasta tres veces, usa `hidden yes` y deja `/var/log/dexos-wifi-firstboot.log`.
 - ISO corregida SHA-256: `6d52cf729c39b4c6f3ff3df1b517defac168e8be48e4a7216da61aba21ce5f95`.
+
+### Revisión 2026-09-09: NetworkManager persistente + ext4 obligatorio
+- [x] Retirar `dexos-wifi-firstboot` tras persistir el fallo físico con tres retries.
+- [x] Crear directamente un perfil NetworkManager `dexos-wifi.nmconnection` modo 600, autoconnect y WPA-PSK.
+- [x] Mantener `wpa_supplicant` como dependencia/servicio de NetworkManager.
+- [x] Hacer obligatorio ext4: comprobar `blkid` inmediatamente después de `mkfs.ext4` y `findmnt` después de montar la raíz.
+- [x] E2E QEMU en disco nuevo confirmó `/dev/vda3 TYPE=ext4`, perfil Wi-Fi persistente y ausencia del antiguo firstboot.
+- [ ] Validar en hardware físico la nueva ISO con el perfil NetworkManager persistente y `diskinfo`.
+- ISO SHA-256: `0fbdb5a5101ee2bbd8200359f1e2046652e68e5c53751840f50c239a973db38b`.

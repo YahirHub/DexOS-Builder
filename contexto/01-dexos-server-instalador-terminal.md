@@ -271,3 +271,12 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - Los errores de NetworkManager se conservan sin contraseña en `/var/log/dexos-wifi-firstboot.log` (modo 0600); si falla, el archivo de configuración temporal se conserva para el siguiente boot. Tras éxito se elimina.
 - Smoke test con `nmcli` simulado validó: primer intento fallido, segundo exitoso, rescans repetidos, `hidden yes`, eliminación de configuración tras éxito y contraseña ausente de argv.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes (~707 MiB), SHA-256 `6d52cf729c39b4c6f3ff3df1b517defac168e8be48e4a7216da61aba21ce5f95`.
+
+# Wi-Fi persistente por NetworkManager y ext4 obligatorio 2026-09-09
+- Se retiró `dexos-wifi-firstboot` después de que el hardware físico siguiera fallando incluso con dependencias, scan dirigido y tres reintentos.
+- El instalador crea directamente `/etc/NetworkManager/system-connections/dexos-wifi.nmconnection` con modo `0600`, `type=wifi`, `autoconnect=true`, prioridad 80, SSID persistente, `hidden=true`, WPA-PSK cuando hay contraseña y DHCP IPv4/IPv6. NetworkManager decide cuándo activar la conexión al estar lista la radio/AP.
+- `wpa_supplicant` sigue habilitado en `default` y `/etc/conf.d/networkmanager` contiene `rc_need="wpa_supplicant"`.
+- Ya no se crea `/etc/dexos/wifi-firstboot.conf` ni existe `/etc/init.d/dexos-wifi-firstboot`.
+- La raíz se formatea mediante `format_root_ext4`: `wipefs`, `mkfs.ext4 -F -L DexOS-Server`, verificación inmediata con `blkid -p -s TYPE` y aborto si no devuelve exactamente `ext4`. Tras montar se verifica nuevamente con `findmnt -nro FSTYPE`.
+- E2E real con un disco QEMU nuevo: `/dev/vda3` quedó `TYPE="ext4"`; `lsblk` reportó `ext4`; el perfil Wi-Fi quedó modo 600 con autoconnect y WPA-PSK; NetworkManager y wpa_supplicant quedaron habilitados; no quedaron artefactos del antiguo firstboot.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes, SHA-256 `0fbdb5a5101ee2bbd8200359f1e2046652e68e5c53751840f50c239a973db38b`.

@@ -634,6 +634,22 @@ create_root_partition_from_free() {
     root_from_free=0
 }
 
+format_root_ext4() {
+    part=$1
+    wipefs -a "$part"
+    wait_block "$part"
+    mkfs.ext4 -F -L DexOS-Server "$part"
+    wait_block "$part"
+
+    root_fstype=$(blkid -p -s TYPE -o value "$part" 2>/dev/null || true)
+    [ "$root_fstype" = ext4 ] || die "El formato de $part no quedó como ext4 (detectado: ${root_fstype:-desconocido})."
+}
+
+verify_mounted_root_ext4() {
+    mounted_fstype=$(findmnt -nro FSTYPE "$TARGET" 2>/dev/null || true)
+    [ "$mounted_fstype" = ext4 ] || die "La raíz montada no es ext4 (detectado: ${mounted_fstype:-desconocido})."
+}
+
 prepare_storage() {
     ensure_runtime_modules
     if [ "$install_mode" = whole ]; then
@@ -657,7 +673,7 @@ EOF
         mkfs.vfat -F 32 -n DEXOS_EFI "$efi_part"
         refresh_partition_nodes
         wait_block "$root_part"
-        mkfs.ext4 -F -L DexOS-Server "$root_part"
+        format_root_ext4 "$root_part"
         bios_install=1
         efi_install=1
     else
@@ -669,10 +685,7 @@ EOF
             echo "Se conservarán todas las demás particiones, incluida: ${efi_part:-ninguna ESP seleccionada}."
             wait_block "$root_part"
         fi
-        wipefs -a "$root_part"
-        wait_block "$root_part"
-        mkfs.ext4 -F -L DexOS-Server "$root_part"
-        wait_block "$root_part"
+        format_root_ext4 "$root_part"
     fi
 }
 
@@ -683,6 +696,7 @@ mount_target() {
     wait_block "$root_part"
     mount -t ext4 "$root_part" "$TARGET"
     MOUNTED=1
+    verify_mounted_root_ext4
     mkdir -p "$TARGET/boot/efi"
     if [ -n "${efi_part:-}" ]; then
         wait_block "$efi_part"
@@ -714,7 +728,7 @@ write_target_config() {
     mkdir -p "$TARGET/etc/apk" "$TARGET/etc/ssh/sshd_config.d" "$TARGET/etc/avahi" \
         "$TARGET/etc/doas.d" "$TARGET/etc/NetworkManager/conf.d" \
         "$TARGET/etc/NetworkManager/system-connections" "$TARGET/usr/local/sbin" "$TARGET/usr/local/bin" \
-        "$TARGET/etc/grub.d" "$TARGET/etc/dexos" "$TARGET/etc/profile.d"
+        "$TARGET/etc/grub.d" "$TARGET/etc/profile.d"
 
     cat > "$TARGET/etc/apk/repositories" <<EOF
 $ONLINE_MAIN
@@ -811,31 +825,13 @@ EOF
     chroot "$TARGET" /sbin/rc-update add wpa_supplicant default >/dev/null 2>&1         || die "No se pudo habilitar wpa_supplicant para NetworkManager."
 
     installed_assets=/usr/share/dexos/installed
-    [ -x "$installed_assets/dexos-wifi-firstboot" ] || die "Falta el servicio Wi-Fi de primer arranque."
     [ -x "$installed_assets/wifi" ] || die "Falta la herramienta wifi."
     [ -x "$installed_assets/diskinfo" ] || die "Falta diskinfo."
-    cp "$installed_assets/dexos-wifi-firstboot" "$TARGET/etc/init.d/dexos-wifi-firstboot"
     cp "$installed_assets/wifi" "$TARGET/usr/local/bin/wifi"
     cp "$installed_assets/diskinfo" "$TARGET/usr/local/bin/diskinfo"
     cp "$installed_assets/10-dexos-diskinfo.sh" "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
-    chmod 0755 "$TARGET/etc/init.d/dexos-wifi-firstboot" "$TARGET/usr/local/bin/wifi" "$TARGET/usr/local/bin/diskinfo"
+    chmod 0755 "$TARGET/usr/local/bin/wifi" "$TARGET/usr/local/bin/diskinfo"
     chmod 0644 "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
-    chroot "$TARGET" /sbin/rc-update add dexos-wifi-firstboot default >/dev/null 2>&1         || die "No se pudo habilitar dexos-wifi-firstboot."
-
-    if [ -n "${wifi_ssid:-}" ]; then
-        ssid_b64=$(printf '%s' "$wifi_ssid" | base64 | tr -d '
-')
-        password_b64=$(printf '%s' "${wifi_password:-}" | base64 | tr -d '
-')
-        cat > "$TARGET/etc/dexos/wifi-firstboot.conf" <<EOF
-SSID_B64='$ssid_b64'
-PASSWORD_B64='$password_b64'
-EOF
-        chmod 0600 "$TARGET/etc/dexos/wifi-firstboot.conf"
-    else
-        rm -f "$TARGET/etc/dexos/wifi-firstboot.conf"
-    fi
-    unset wifi_password ssid_b64 password_b64
 
     if [ -d /etc/NetworkManager/system-connections ]; then
         for profile in /etc/NetworkManager/system-connections/*; do
@@ -846,6 +842,48 @@ EOF
             cp -a "$profile" "$TARGET/etc/NetworkManager/system-connections/" 2>/dev/null || true
         done
     fi
+    rm -f "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+    if [ -n "${wifi_ssid:-}" ]; then
+        wifi_uuid=$(uuidgen)
+        wifi_ssid_key=$(printf '%s' "$wifi_ssid" | sed 's/\\/\\\\/g; s/;/\\;/g')
+        wifi_password_key=$(printf '%s' "${wifi_password:-}" | sed 's/\\/\\\\/g; s/;/\\;/g')
+        cat > "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" <<EOF
+[connection]
+id=DexOS WiFi
+uuid=$wifi_uuid
+type=wifi
+autoconnect=true
+autoconnect-priority=80
+
+[wifi]
+mode=infrastructure
+ssid=$wifi_ssid_key
+hidden=true
+powersave=2
+EOF
+        if [ -n "${wifi_password:-}" ]; then
+            cat >> "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" <<EOF
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=$wifi_password_key
+EOF
+        fi
+        cat >> "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" <<'EOF'
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+addr-gen-mode=default
+
+[proxy]
+EOF
+        chmod 0600 "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+        unset wifi_password wifi_password_key wifi_ssid_key
+    fi
+
     wired_uuid=$(uuidgen)
     cat > "$TARGET/etc/NetworkManager/system-connections/dexos-wired.nmconnection" <<EOF
 [connection]

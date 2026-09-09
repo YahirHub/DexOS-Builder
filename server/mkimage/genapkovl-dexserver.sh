@@ -14,7 +14,6 @@ LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -x "$WEB_ASSET/cgi-bin/install.cgi" ] || { echo "Falta CGI de instalación" >&2; exit 1; }
 [ -x "$LIVE_HELPER" ] || { echo "Falta helper Dex-Installer Live" >&2; exit 1; }
 [ -x "$LIVE_SERVICE" ] || { echo "Falta servicio OpenRC Dex-Installer Live" >&2; exit 1; }
-[ -x "$INSTALLED_ASSET/dexos-wifi-firstboot" ] || { echo "Falta servicio Wi-Fi instalado" >&2; exit 1; }
 [ -x "$INSTALLED_ASSET/wifi" ] || { echo "Falta herramienta wifi" >&2; exit 1; }
 [ -x "$INSTALLED_ASSET/diskinfo" ] || { echo "Falta diskinfo" >&2; exit 1; }
 tmp="$(mktemp -d)"
@@ -151,7 +150,6 @@ chmod 0755 \
   "$tmp/etc/init.d/dex-installer-live" \
   "$tmp/usr/share/dexos/grub.d/31_dexos_other_os" \
   "$tmp/usr/share/dexos/installer-web/cgi-bin/"*.cgi \
-  "$tmp/usr/share/dexos/installed/dexos-wifi-firstboot" \
   "$tmp/usr/share/dexos/installed/wifi" \
   "$tmp/usr/share/dexos/installed/diskinfo"
 chmod 0644 "$tmp/usr/share/dexos/installed/10-dexos-diskinfo.sh"
