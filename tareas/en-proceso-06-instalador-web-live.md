@@ -150,3 +150,14 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] Recompilar e inspeccionar la ISO final; pruebas estáticas y Go PASS.
 - [ ] Validar en hardware físico que el boot muestre `credencial WPA de respaldo disponible` y termine en `conectado: DexOS WiFi`.
 - ISO SHA-256: `9da75324d34b81bb7a84d91f14e102c80847ddc8a5089806d02aa103dc7f4c10`.
+
+### Fix físico 2026-09-09 — DNS listo después del reinicio
+- [x] Confirmar que Wi-Fi/PSK ya conectan y aislar el nuevo fallo a resolución DNS.
+- [x] Detectar que `dns=default` + `rc-manager=file` reemplazaba el fallback con el DNS DHCP `192.168.x.x` del router.
+- [x] Configurar el target con `dns=none` y `rc-manager=unmanaged` para que NetworkManager no toque `/etc/resolv.conf`.
+- [x] Dejar `/etc/resolv.conf` estático con `1.1.1.1` y `8.8.8.8`, modo 0644.
+- [x] Mantener el Live sin cambios en su DNS dinámico.
+- [x] Añadir pruebas de regresión para impedir que el target vuelva a `rc-manager=file`.
+- [x] Recompilar e inspeccionar la ISO final; contiene `dns=none`, `rc-manager=unmanaged`, `1.1.1.1` y `8.8.8.8`.
+- [ ] Validar en hardware físico que `ping google.com` funcione inmediatamente tras reiniciar.
+- ISO SHA-256: `66845e0948e1262fbb53532ec0af1a61cc0732f070a230975ba0ba3b745c732b`.

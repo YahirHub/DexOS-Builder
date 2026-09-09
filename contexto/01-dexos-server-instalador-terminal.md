@@ -327,3 +327,13 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - Se añadió una prueba determinista del fallo exacto observado: perfil presente, NetworkManager listo, PSK ausente en el perfil; la conexión sólo tiene éxito cuando el helper entrega `passwd-file`. También verifica que la contraseña no aparece en stdout ni en el log.
 - Pruebas estáticas PASS y `go test ./server/wifi-tui` PASS. La ISO final fue extraída y se confirmó que contiene el snapshot de contraseña, `psk-flags=0`, el respaldo `wifi.passwd` y el helper con `passwd-file`.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `9da75324d34b81bb7a84d91f14e102c80847ddc8a5089806d02aa103dc7f4c10`.
+
+# Corrección 2026-09-09: Wi-Fi conectado pero DNS sin Internet
+- La prueba física confirmó que la asociación Wi-Fi y el PSK ya funcionan, pero `/etc/resolv.conf` terminaba usando el DNS entregado por DHCP (una dirección `192.168.x.x`) y ese resolver no respondía correctamente. Cambiar manualmente `resolv.conf` y ejecutar `setup-dns` restauraba Internet.
+- Causa: el target configuraba NetworkManager con `dns=default` + `rc-manager=file`. Esa combinación permite que NetworkManager reescriba `/etc/resolv.conf` con los DNS anunciados por la conexión DHCP, sustituyendo el fallback `1.1.1.1`/`8.8.8.8` escrito por el instalador.
+- El sistema instalado ahora usa `dns=none` y `rc-manager=unmanaged`, por lo que NetworkManager sigue administrando Wi-Fi/Ethernet, rutas y DHCP, pero no modifica `/etc/resolv.conf`.
+- `/etc/resolv.conf` queda estático con `1.1.1.1` y `8.8.8.8`, modo 0644. Esto evita depender del DNS defectuoso anunciado por el router y deja resolución de nombres disponible inmediatamente después del reinicio.
+- El Live conserva su DNS dinámico actual; el cambio se aplica sólo al sistema instalado.
+- Se añadieron pruebas que exigen `dns=none`, `rc-manager=unmanaged`, ambos resolvers públicos y que prohíben `rc-manager=file` dentro del instalador del target.
+
+- ISO recompilada e inspeccionada: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `66845e0948e1262fbb53532ec0af1a61cc0732f070a230975ba0ba3b745c732b`.

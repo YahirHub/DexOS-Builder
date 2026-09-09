@@ -788,17 +788,20 @@ EOF
     cat > "$TARGET/etc/NetworkManager/conf.d/10-dexos-network.conf" <<'EOF'
 [main]
 plugins=keyfile
-rc-manager=file
-dns=default
+# DexOS uses deterministic public resolvers. Some routers advertise themselves
+# as DNS through DHCP but do not actually answer/forward queries reliably.
+dns=none
+rc-manager=unmanaged
 
 [ifupdown]
 managed=true
 EOF
     cat > "$TARGET/etc/resolv.conf" <<'EOF'
-# Fallback DNS; NetworkManager replaces this after DHCP/Wi-Fi connects.
+# DexOS static DNS. NetworkManager is intentionally configured not to overwrite it.
 nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
+    chmod 0644 "$TARGET/etc/resolv.conf"
 
     [ -x "$TARGET/bin/bash" ] || die "Bash no quedó instalado en el sistema destino."
     awk -F: 'BEGIN { OFS=FS } $1 == "root" { $7="/bin/bash" } { print }' "$TARGET/etc/passwd" > "$TARGET/etc/passwd.dexos"

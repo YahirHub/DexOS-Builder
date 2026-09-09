@@ -259,7 +259,12 @@ if grep -Fq 'wifi-firstboot.conf' "$INSTALLER"; then fail "instalador conserva c
 if grep -Fq 'dexos-wifi-firstboot' "$INSTALLER"; then fail "instalador sigue habilitando servicio Wi-Fi de primer arranque"; fi
 grep -Fq 'udev udev-trigger udev-settle' "$INSTALLER" || fail "coldplug udev no configurado en sistema instalado"
 grep -Fq 'networkmanager sshd avahi-daemon udev-postmount' "$INSTALLER" || fail "servicios instalados no configurados"
-grep -Fq 'rc-manager=file' "$INSTALLER" || fail "NetworkManager instalado no administra resolv.conf"
+grep -Fq 'dns=none' "$INSTALLER" || fail "NetworkManager instalado todavía puede reemplazar el DNS estático"
+grep -Fq 'rc-manager=unmanaged' "$INSTALLER" || fail "NetworkManager instalado todavía administra /etc/resolv.conf"
+if grep -Fq 'rc-manager=file' "$INSTALLER"; then fail "NetworkManager instalado aún puede sobrescribir /etc/resolv.conf con el DNS DHCP"; fi
+grep -Fq 'nameserver 1.1.1.1' "$INSTALLER" || fail "DNS estático primario falta en sistema instalado"
+grep -Fq 'nameserver 8.8.8.8' "$INSTALLER" || fail "DNS estático secundario falta en sistema instalado"
+grep -Fq 'chmod 0644 "$TARGET/etc/resolv.conf"' "$INSTALLER" || fail "resolv.conf instalado no fija permisos normales"
 grep -Fq 'dexos-wired.nmconnection' "$INSTALLER" || fail "sistema instalado no tiene Ethernet DHCP automático"
 grep -Fq 'rc_need="wpa_supplicant"' "$INSTALLER" || fail "NetworkManager instalado no espera wpa_supplicant"
 grep -Fq 'rc-update add wpa_supplicant default' "$INSTALLER" || fail "wpa_supplicant no se habilita en el sistema instalado"
