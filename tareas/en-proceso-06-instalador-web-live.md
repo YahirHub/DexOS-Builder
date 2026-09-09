@@ -128,3 +128,12 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] Recompilar y comprobar que la ISO contiene helper, generador Argon y pruebas actualizadas.
 - [ ] Validar en hardware físico que el boot muestre la carga explícita del perfil y que GRUB renderice Argon.
 - ISO SHA-256: `142a7694f5acd387d4574ab0e644017da0591978b48aa9ca606ef9897c0df8a1`.
+
+### Fix físico 2026-09-09 — NetworkManager aún no estaba listo
+- [x] Interpretar el nuevo log físico: `connection reload` y `connection load` fallaban con `NetworkManager is not running`, así que el keyfile no era el problema en ese arranque.
+- [x] Esperar hasta 30 s a que `nmcli general status` confirme que NetworkManager acepta comandos antes de recargar/cargar el perfil.
+- [x] Mantener la espera acotada y registrar `rc-service networkmanager status` si el daemon nunca queda listo.
+- [x] Añadir prueba determinista con tres fallos iniciales `NetworkManager is not running`, recuperación en el cuarto intento y conexión final del perfil.
+- [x] Recompilar la ISO y comprobar que el helper incluido contiene `wait_for_networkmanager` y la espera por `nmcli general status`.
+- [ ] Validar en hardware físico que desaparezca `NetworkManager is not running`, el perfil se cargue y el Wi-Fi quede conectado.
+- ISO SHA-256: `2bde18b2991f7f75046eca31974ab7e2f0ff8bf4f1d4cc27a546d86fe1a8d4db`.

@@ -21,6 +21,25 @@ fail() {
 
 command -v nmcli >/dev/null 2>&1 || { fail 'nmcli no está disponible.'; exit 1; }
 
+wait_for_networkmanager() {
+    waited=0
+    while [ "$waited" -lt 30 ]; do
+        if nmcli general status >/dev/null 2>&1; then
+            [ "$waited" -eq 0 ] || log "NetworkManager listo tras ${waited}s."
+            return 0
+        fi
+        [ "$waited" -ne 0 ] || log 'esperando a que NetworkManager acepte comandos...'
+        sleep 1
+        waited=$((waited + 1))
+    done
+
+    fail 'NetworkManager no respondió después de 30 s.'
+    rc-service networkmanager status >>"$LOG" 2>&1 || true
+    return 1
+}
+
+wait_for_networkmanager || exit 1
+
 log 'cargando perfil guardado de NetworkManager...'
 nmcli connection reload >>"$LOG" 2>&1 || true
 if ! nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$PROFILE"; then

@@ -307,3 +307,12 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - Para GRUB instalado se añadió `/etc/grub.d/05_dexos_theme`, que fuerza `all_video`, `gfxterm`, `gfxmenu`, PNG, localiza la partición que contiene `/boot/grub/themes/argon/theme.txt`, carga las fuentes Terminus y fija Argon directamente antes de generar la entrada principal. Esto evita depender sólo de la lógica de tema de `00_header`/`/etc/default/grub`.
 - El tema conserva `1920x1080,auto`, `gfxpayload=keep`, `Terminus_16.pf2` (`Console Bold 16`) y `Terminus_24.pf2` (`Display Bold 24`).
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes, SHA-256 `142a7694f5acd387d4574ab0e644017da0591978b48aa9ca606ef9897c0df8a1`.
+
+# Corrección 2026-09-09: carrera real al arrancar NetworkManager
+- La siguiente prueba física aclaró el fallo anterior: OpenRC mostraba `Starting networkmanager`, pero inmediatamente después `dexos-wifi-autoconnect` ejecutaba `nmcli` y éste respondía `Error: NetworkManager is not running.` tanto en `connection reload` como en `connection load`. El keyfile no estaba siendo rechazado por formato; el helper llegaba demasiado pronto al daemon.
+- `/usr/local/sbin/dexos-wifi-connect` ahora espera hasta 30 s a que `nmcli general status` responda correctamente antes de tocar conexiones. La espera es posterior a las dependencias OpenRC (`dbus`, `wpa_supplicant`, `networkmanager`) porque que el servicio esté marcado como iniciado no garantiza que NetworkManager ya haya registrado su API D-Bus.
+- Durante esa carrera se muestra una sola vez `esperando a que NetworkManager acepte comandos...`; cuando queda disponible se informa `NetworkManager listo tras Ns.` y entonces se ejecutan `connection reload`, carga explícita del keyfile, scan y `connection up`.
+- Si NetworkManager no responde en 30 s, el helper falla de forma acotada y añade `rc-service networkmanager status` al log para diagnóstico; no queda bloqueado indefinidamente.
+- Se añadió una prueba determinista que simula exactamente el arranque físico: los tres primeros `nmcli general status` devuelven `NetworkManager is not running`, el cuarto queda listo, el keyfile se carga y el helper termina en `conectado: DexOS WiFi`.
+- Pruebas estáticas y `go test ./server/wifi-tui` pasan. La ISO recompilada contiene el helper con la espera real de NetworkManager.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 742391808 bytes (~708 MiB), SHA-256 `2bde18b2991f7f75046eca31974ab7e2f0ff8bf4f1d4cc27a546d86fe1a8d4db`.

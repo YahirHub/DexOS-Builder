@@ -270,9 +270,66 @@ grep -Fq 'safeText' "$WIFI_TUI" || fail "TUI no neutraliza caracteres de control
 grep -Fq 'connection.autoconnect-retries 0' "$WIFI_BOOT_HELPER" || fail "helper de boot no fija reintentos infinitos"
 grep -Fq 'nmcli --wait 35 connection up' "$WIFI_BOOT_HELPER" || fail "helper de boot no activa explícitamente el perfil"
 grep -Fq 'nmcli connection load "$PROFILE_FILE"' "$WIFI_BOOT_HELPER" || fail "helper de boot no carga explícitamente el keyfile si NetworkManager lo omite"
+grep -Fq 'nmcli general status' "$WIFI_BOOT_HELPER" || fail "helper de boot no espera a que NetworkManager esté realmente listo"
+grep -Fq 'NetworkManager no respondió después de 30 s.' "$WIFI_BOOT_HELPER" || fail "helper de boot no limita la espera de NetworkManager"
 grep -Fq 'PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection' "$WIFI_BOOT_HELPER" || fail "helper no apunta al keyfile instalado"
 grep -Fq '/var/log/dexos-wifi-autoconnect.log' "$WIFI_BOOT_HELPER" || fail "helper de boot no deja diagnóstico"
 grep -Fq 'need dbus wpa_supplicant networkmanager' "$WIFI_BOOT_SERVICE" || fail "servicio Wi-Fi no espera backend completo"
+
+# Reproduce the physical-boot race: OpenRC has started the NetworkManager service,
+# but nmcli still reports "NetworkManager is not running" for a few moments.
+MOCK=$(mktemp -d)
+trap 'rm -rf "$MOCK"' EXIT HUP INT TERM
+mkdir -p "$MOCK/bin" "$MOCK/etc/NetworkManager/system-connections"
+printf dummy > "$MOCK/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+cp "$WIFI_BOOT_HELPER" "$MOCK/helper"
+python3 - "$MOCK/helper" "$MOCK/log" "$MOCK/bin" "$MOCK/etc/NetworkManager/system-connections/dexos-wifi.nmconnection" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); log=sys.argv[2]; bindir=sys.argv[3]; profile=sys.argv[4]
+s=p.read_text()
+s=s.replace('LOG=/var/log/dexos-wifi-autoconnect.log', f'LOG={log}')
+s=s.replace('PROFILE_FILE=/etc/NetworkManager/system-connections/dexos-wifi.nmconnection', f'PROFILE_FILE={profile}')
+s=s.replace('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', f'PATH={bindir}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin')
+p.write_text(s)
+PY
+cat > "$MOCK/bin/nmcli" <<'EOF'
+#!/bin/sh
+case "$*" in
+  'general status')
+    n=0; [ ! -f "$MOCK_NM_STATE" ] || n=$(cat "$MOCK_NM_STATE")
+    n=$((n + 1)); printf '%s\n' "$n" > "$MOCK_NM_STATE"
+    [ "$n" -ge 4 ] && exit 0
+    echo 'Error: NetworkManager is not running.' >&2
+    exit 8
+    ;;
+  'connection reload') exit 0 ;;
+  '-t -f NAME connection show') [ -f "$MOCK_PROFILE_LOADED" ] && printf 'DexOS WiFi\n'; exit 0 ;;
+  connection\ load\ *) touch "$MOCK_PROFILE_LOADED"; exit 0 ;;
+  '-g 802-11-wireless.ssid connection show DexOS WiFi') printf 'Casa-Test\n'; exit 0 ;;
+  'connection modify DexOS WiFi connection.autoconnect yes connection.autoconnect-retries 0') exit 0 ;;
+  'radio wifi on') exit 0 ;;
+  '-t -f DEVICE,TYPE device status') printf 'wlan0:wifi\n'; exit 0 ;;
+  '-t -f NAME,TYPE connection show --active') exit 0 ;;
+  'device wifi rescan ifname wlan0 ssid Casa-Test') exit 0 ;;
+  '--wait 35 connection up DexOS WiFi ifname wlan0') exit 0 ;;
+  '-g GENERAL.STATE device show wlan0') printf '100 (connected)\n'; exit 0 ;;
+  '-g GENERAL.CONNECTION device show wlan0') printf 'DexOS WiFi\n'; exit 0 ;;
+  *) echo "unexpected nmcli call: $*" >&2; exit 3 ;;
+esac
+EOF
+cat > "$MOCK/bin/sleep" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod +x "$MOCK/helper" "$MOCK/bin/nmcli" "$MOCK/bin/sleep"
+MOCK_NM_STATE="$MOCK/nm-state" MOCK_PROFILE_LOADED="$MOCK/profile-loaded" "$MOCK/helper" > "$MOCK/stdout" 2>&1 || fail "helper Wi-Fi no supera la carrera de arranque de NetworkManager"
+grep -Fq 'esperando a que NetworkManager acepte comandos' "$MOCK/stdout" || fail "helper Wi-Fi no informa la espera de NetworkManager"
+grep -Fq 'NetworkManager listo tras 3s.' "$MOCK/stdout" || fail "helper Wi-Fi no reanuda cuando NetworkManager queda listo"
+grep -Fq 'conectado: DexOS WiFi' "$MOCK/stdout" || fail "helper Wi-Fi no continúa hasta activar el perfil después de la carrera"
+rm -rf "$MOCK"
+trap - EXIT HUP INT TERM
+pass "autoconexión Wi-Fi espera la disponibilidad real de NetworkManager"
 grep -Fq 'insmod gfxmenu' "$GRUB_THEME_GEN" || fail "generador Argon no carga gfxmenu"
 grep -Fq 'search --no-floppy --file --set=dex_theme_root /boot/grub/themes/argon/theme.txt' "$GRUB_THEME_GEN" || fail "generador Argon no localiza la partición del tema"
 grep -Fq 'loadfont ($dex_theme_root)/boot/grub/themes/argon/Terminus_16.pf2' "$GRUB_THEME_GEN" || fail "generador Argon no carga fuente 16"
