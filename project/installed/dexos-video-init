@@ -1,0 +1,23 @@
+#!/bin/sh
+log=/tmp/dexos-video.log
+{
+    echo "--- DexOS video init $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true) ---"
+    # XFWM4 compositor + XPresent removes tearing without forcing a vendor driver.
+    xfconf-query -c xfwm4 -p /general/use_compositing -n -t bool -s true 2>&1 || \
+      xfconf-query -c xfwm4 -p /general/use_compositing -s true 2>&1 || true
+    xfconf-query -c xfwm4 -p /general/vblank_mode -n -t string -s xpresent 2>&1 || \
+      xfconf-query -c xfwm4 -p /general/vblank_mode -s xpresent 2>&1 || true
+
+    # AMDGPU and some modesetting drivers expose TearFree per output.
+    xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | while read -r out; do
+        xrandr --output "$out" --set TearFree on 2>/dev/null || true
+    done
+
+    echo '--- renderer ---'
+    glxinfo -B 2>&1 || true
+    echo '--- VA-API ---'
+    vainfo 2>&1 || true
+    echo '--- VDPAU ---'
+    vdpauinfo 2>&1 | head -n 80 || true
+} >"$log" 2>&1
+exit 0

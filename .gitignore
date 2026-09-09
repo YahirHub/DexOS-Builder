@@ -10,3 +10,5 @@ build-home/
 *.rc
 __pycache__/
 *.pyc
+
+alpine-conf/

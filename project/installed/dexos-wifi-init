@@ -1,0 +1,89 @@
+#!/sbin/openrc-run
+name="DexOS Wi-Fi detection"
+description="Detect and enable Wi-Fi hardware before NetworkManager"
+
+LOG=/var/log/dexos-wifi.log
+
+depend() {
+    need udev udev-trigger
+    after udev-settle modules
+    before networkmanager
+}
+
+log() {
+    printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true)" "$*" >> "$LOG"
+}
+
+load_modalias_bus() {
+    pattern=$1
+    for aliasfile in $pattern; do
+        [ -r "$aliasfile" ] || continue
+        alias=$(cat "$aliasfile" 2>/dev/null || true)
+        [ -n "$alias" ] || continue
+        mod=$(modprobe -R "$alias" 2>/dev/null | head -n1 || true)
+        [ -n "$mod" ] && log "modalias ${aliasfile}: ${mod}"
+        modprobe "$alias" >>"$LOG" 2>&1 || true
+    done
+}
+
+common_modules() {
+    for mod in \
+        iwlwifi \
+        rtw88_pci rtw88_usb \
+        rtw89_pci rtw89_usb \
+        mt7921e mt7921u mt7925e mt7925u mt76x2e mt76x2u mt7601u \
+        ath9k ath9k_htc ath10k_pci ath10k_usb ath11k_pci ath12k \
+        brcmfmac brcmsmac b43 rtl8xxxu; do
+        modprobe "$mod" >>"$LOG" 2>&1 || true
+    done
+}
+
+probe_once() {
+    rfkill unblock wlan >>"$LOG" 2>&1 || true
+    rfkill unblock wifi >>"$LOG" 2>&1 || true
+    rfkill unblock all >>"$LOG" 2>&1 || true
+
+    udevadm trigger --action=add --subsystem-match=pci >>"$LOG" 2>&1 || true
+    udevadm trigger --action=add --subsystem-match=usb >>"$LOG" 2>&1 || true
+    udevadm settle --timeout=15 >>"$LOG" 2>&1 || true
+
+    load_modalias_bus '/sys/bus/pci/devices/*/modalias'
+    load_modalias_bus '/sys/bus/usb/devices/*/modalias'
+    common_modules
+
+    udevadm trigger --action=add --subsystem-match=net >>"$LOG" 2>&1 || true
+    udevadm settle --timeout=15 >>"$LOG" 2>&1 || true
+
+    for dev in /sys/class/net/*; do
+        [ -e "$dev" ] || continue
+        name=${dev##*/}
+        [ "$name" = lo ] && continue
+        if [ -d "$dev/wireless" ] || [ -e "$dev/phy80211" ]; then
+            log "wireless interface detected: $name"
+            ip link set "$name" up >>"$LOG" 2>&1 || true
+        fi
+    done
+}
+
+start() {
+    ebegin "Detecting Wi-Fi hardware"
+    : > "$LOG"
+    log "DexOS Wi-Fi probe start"
+
+    # Two passes help laptops whose ACPI/firmware exposes the radio slightly
+    # after udev has completed the first hardware enumeration.
+    probe_once
+    sleep 1
+    probe_once
+
+    {
+        echo '--- rfkill ---'; rfkill list 2>&1 || true
+        echo '--- iw dev ---'; iw dev 2>&1 || true
+        echo '--- interfaces ---'; ip -br link 2>&1 || true
+        echo '--- PCI network ---'; lspci -nnk 2>&1 | sed -n '/Network controller/,+4p;/Wireless/,+4p' || true
+        echo '--- USB ---'; lsusb 2>&1 || true
+        echo '--- kernel wifi/firmware ---'; dmesg 2>&1 | grep -Ei 'wifi|wlan|80211|iwlwifi|rtw|rtl|ath|brcm|b43|mt76|firmware|rfkill' | tail -n 200 || true
+    } >> "$LOG"
+
+    eend 0
+}

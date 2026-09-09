@@ -1,0 +1,30 @@
+#!/bin/sh
+# Initialize laptop audio conservatively. UCM/SOF select the right topology;
+# this helper only unmutes existing ALSA playback controls and sets them to
+# their hardware 100% level. Software amplification is exposed by the XFCE
+# volume plugin and is not forced at login.
+log=/var/log/dexos-audio.log
+{
+    echo "--- DexOS audio init $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true) ---"
+    alsactl init 2>&1 || true
+    for ctl in Master Speaker PCM Headphone; do
+        if amixer scontrols 2>/dev/null | grep -Fq "'$ctl'"; then
+            amixer -q sset "$ctl" unmute 2>/dev/null || true
+            amixer -q sset "$ctl" 100% 2>/dev/null || true
+        fi
+    done
+    echo '--- ALSA cards ---'
+    cat /proc/asound/cards 2>&1 || true
+    # XFCE autostarts /usr/libexec/pipewire-launcher from the PipeWire package.
+    i=0
+    while [ "$i" -lt 20 ]; do
+        wpctl status >/dev/null 2>&1 && break
+        sleep 0.25
+        i=$((i + 1))
+    done
+    wpctl set-mute @DEFAULT_AUDIO_SINK@ 0 2>&1 || true
+    wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0 2>&1 || true
+    echo '--- PipeWire/WirePlumber ---'
+    wpctl status 2>&1 || true
+} >> "$log" 2>&1
+exit 0

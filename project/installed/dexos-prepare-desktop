@@ -1,0 +1,36 @@
+#!/bin/sh
+# Generate xfdesktop state before startxfce4. XFCE 4.20 keys wallpapers by
+# the Xfw monitor connector, which on X11 matches the xrandr connector.
+set -u
+wall=/usr/share/dexos/dexos-wallpaper.png
+cfg="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+mkdir -p "$(dirname "$cfg")"
+mons=$(xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | sed 's/[^A-Za-z0-9_.-]//g')
+{
+  printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+  printf '%s\n' '<channel name="xfce4-desktop" version="1.0">'
+  printf '%s\n' '  <property name="backdrop" type="empty">'
+  printf '%s\n' '    <property name="screen0" type="empty">'
+  # monitor0 remains as compatibility/fallback.
+  printf '%s\n' '      <property name="monitor0" type="empty">'
+  printf '%s\n' '        <property name="workspace0" type="empty">'
+  printf '          <property name="last-image" type="string" value="%s"/>\n' "$wall"
+  printf '%s\n' '          <property name="image-style" type="int" value="5"/>'
+  printf '%s\n' '          <property name="color-style" type="int" value="0"/>'
+  printf '%s\n' '        </property>'
+  printf '%s\n' '      </property>'
+  for mon in $mons; do
+    printf '      <property name="monitor%s" type="empty">\n' "$mon"
+    printf '%s\n' '        <property name="workspace0" type="empty">'
+    printf '          <property name="last-image" type="string" value="%s"/>\n' "$wall"
+    printf '%s\n' '          <property name="image-style" type="int" value="5"/>'
+    printf '%s\n' '          <property name="color-style" type="int" value="0"/>'
+    printf '%s\n' '        </property>'
+    printf '%s\n' '      </property>'
+  done
+  printf '%s\n' '    </property>'
+  printf '%s\n' '  </property>'
+  printf '%s\n' '</channel>'
+} > "$cfg"
+chmod 0644 "$cfg"
+exit 0

@@ -1,0 +1,24 @@
+#!/bin/sh
+# XFCE/Thunar 4.18+ trusts desktop launchers by storing the launcher's SHA-256
+# in GVfs metadata::xfce-exe-checksum. chmod +x alone is intentionally not enough.
+launcher="$HOME/Desktop/Instalar-DexOS.desktop"
+i=0
+while [ "$i" -lt 120 ] && [ ! -e "$launcher" ]; do sleep 0.25; i=$((i + 1)); done
+[ -e "$launcher" ] || exit 0
+chmod 0755 "$launcher" 2>/dev/null || true
+sum=$(sha256sum "$launcher" 2>/dev/null | awk '{print $1}')
+[ -n "$sum" ] || exit 0
+
+i=0
+while [ "$i" -lt 120 ]; do
+    # Wait for the user's DBus/GVfs metadata service, then write the checksum.
+    if gio info "$launcher" >/dev/null 2>&1; then
+        gio set -t string "$launcher" metadata::xfce-exe-checksum "$sum" >/dev/null 2>&1 || true
+        got=$(gio info -a metadata::xfce-exe-checksum "$launcher" 2>/dev/null | awk '/metadata::xfce-exe-checksum:/ {print $2}')
+        [ "$got" = "$sum" ] && break
+    fi
+    sleep 0.25
+    i=$((i + 1))
+done
+xfdesktop --reload >/dev/null 2>&1 || true
+exit 0
