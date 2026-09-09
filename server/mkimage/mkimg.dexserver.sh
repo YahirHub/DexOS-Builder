@@ -14,7 +14,7 @@ profile_dexserver() {
     initrd_ucode="/boot/amd-ucode.img /boot/intel-ucode.img"
     syslinux_timeout=5
     syslinux_prompt=0
-    apks="alpine-base alpine-conf busybox-extras ca-certificates tzdata doas \
+    apks="alpine-base alpine-conf busybox-extras bash ca-certificates tzdata doas \
         openssh openssh-server openssh-client openssl kbd-bkeymaps \
         avahi avahi-openrc dbus dbus-openrc eudev eudev-openrc \
         networkmanager networkmanager-openrc networkmanager-wifi networkmanager-cli \

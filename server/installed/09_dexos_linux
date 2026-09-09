@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+root_spec=$(awk '$2 == "/" {print $1; exit}' /etc/fstab 2>/dev/null || true)
+case "$root_spec" in
+    UUID=*) root_uuid=${root_spec#UUID=} ;;
+    *) exit 0 ;;
+esac
+[ -n "$root_uuid" ] || exit 0
+[ -f /boot/vmlinuz-lts ] || exit 0
+[ -f /boot/initramfs-lts ] || exit 0
+
+cat <<EOF_GRUB
+menuentry 'DexOS Server (Alpine Linux)' --class alpine --class gnu-linux --class gnu --class os {
+    insmod part_gpt
+    insmod part_msdos
+    insmod ext2
+    search --no-floppy --fs-uuid --set=root $root_uuid
+    linux /boot/vmlinuz-lts root=UUID=$root_uuid ro rootfstype=ext4 quiet
+    initrd /boot/initramfs-lts
+}
+EOF_GRUB

@@ -800,7 +800,11 @@ nameserver 1.1.1.1
 nameserver 8.8.8.8
 EOF
 
-    chroot "$TARGET" /usr/sbin/adduser -D -s /bin/ash "$admin_user"
+    [ -x "$TARGET/bin/bash" ] || die "Bash no quedó instalado en el sistema destino."
+    awk -F: 'BEGIN { OFS=FS } $1 == "root" { $7="/bin/bash" } { print }' "$TARGET/etc/passwd" > "$TARGET/etc/passwd.dexos"
+    mv "$TARGET/etc/passwd.dexos" "$TARGET/etc/passwd"
+    chmod 0644 "$TARGET/etc/passwd"
+    chroot "$TARGET" /usr/sbin/adduser -D -s /bin/bash "$admin_user"
     chroot "$TARGET" /usr/sbin/addgroup "$admin_user" wheel >/dev/null 2>&1 || true
     chroot "$TARGET" /usr/sbin/addgroup "$admin_user" plugdev >/dev/null 2>&1 || true
     printf '%s:%s\nroot:%s\n' "$admin_user" "$admin_password" "$root_password" \
@@ -825,12 +829,20 @@ EOF
     chroot "$TARGET" /sbin/rc-update add wpa_supplicant default >/dev/null 2>&1         || die "No se pudo habilitar wpa_supplicant para NetworkManager."
 
     installed_assets=/usr/share/dexos/installed
-    [ -x "$installed_assets/wifi" ] || die "Falta la herramienta wifi."
+    [ -x "$installed_assets/wifi" ] || die "Falta el binario Wi-Fi TUI."
     [ -x "$installed_assets/diskinfo" ] || die "Falta diskinfo."
+    [ -x "$installed_assets/dexos-wifi-connect" ] || die "Falta el helper Wi-Fi de arranque."
+    [ -x "$installed_assets/dexos-wifi-autoconnect" ] || die "Falta el servicio Wi-Fi de arranque."
+    [ -x "$installed_assets/09_dexos_linux" ] || die "Falta la entrada GRUB principal de DexOS."
     cp "$installed_assets/wifi" "$TARGET/usr/local/bin/wifi"
     cp "$installed_assets/diskinfo" "$TARGET/usr/local/bin/diskinfo"
+    cp "$installed_assets/dexos-wifi-connect" "$TARGET/usr/local/sbin/dexos-wifi-connect"
+    cp "$installed_assets/dexos-wifi-autoconnect" "$TARGET/etc/init.d/dexos-wifi-autoconnect"
+    cp "$installed_assets/09_dexos_linux" "$TARGET/etc/grub.d/09_dexos_linux"
     cp "$installed_assets/10-dexos-diskinfo.sh" "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
-    chmod 0755 "$TARGET/usr/local/bin/wifi" "$TARGET/usr/local/bin/diskinfo"
+    chmod 0755 "$TARGET/usr/local/bin/wifi" "$TARGET/usr/local/bin/diskinfo" \
+        "$TARGET/usr/local/sbin/dexos-wifi-connect" "$TARGET/etc/init.d/dexos-wifi-autoconnect" \
+        "$TARGET/etc/grub.d/09_dexos_linux"
     chmod 0644 "$TARGET/etc/profile.d/10-dexos-diskinfo.sh"
 
     if [ -d /etc/NetworkManager/system-connections ]; then
@@ -854,6 +866,7 @@ uuid=$wifi_uuid
 type=wifi
 autoconnect=true
 autoconnect-priority=80
+autoconnect-retries=0
 
 [wifi]
 mode=infrastructure
@@ -881,7 +894,11 @@ addr-gen-mode=default
 [proxy]
 EOF
         chmod 0600 "$TARGET/etc/NetworkManager/system-connections/dexos-wifi.nmconnection"
+        chroot "$TARGET" /sbin/rc-update add dexos-wifi-autoconnect default >/dev/null 2>&1 \
+            || die "No se pudo habilitar el autoconector Wi-Fi de DexOS."
         unset wifi_password wifi_password_key wifi_ssid_key
+    else
+        chroot "$TARGET" /sbin/rc-update del dexos-wifi-autoconnect default >/dev/null 2>&1 || true
     fi
 
     wired_uuid=$(uuidgen)
@@ -914,7 +931,12 @@ EOF
     cp /usr/local/sbin/grub-update "$TARGET/usr/local/sbin/grub-update"
     ln -sf grub-update "$TARGET/usr/local/sbin/update-grub"
     cp /usr/share/dexos/grub.d/31_dexos_other_os "$TARGET/etc/grub.d/31_dexos_other_os"
-    chmod 0755 "$TARGET/usr/local/sbin/grub-update" "$TARGET/etc/grub.d/31_dexos_other_os"
+    chmod 0755 "$TARGET/usr/local/sbin/grub-update" "$TARGET/etc/grub.d/31_dexos_other_os" \
+        "$TARGET/etc/grub.d/09_dexos_linux"
+    # DexOS owns the primary Linux menu entry. os-prober and the fallback remain
+    # executable after it, so detected systems are rendered below DexOS.
+    chmod -x "$TARGET/etc/grub.d/10_linux" 2>/dev/null || true
+    chmod -x "$TARGET/etc/grub.d/20_linux_xen" 2>/dev/null || true
 }
 
 install_grub_theme() {
@@ -1004,9 +1026,10 @@ GRUB_DISTRIBUTOR="DexOS Server"
 GRUB_DISABLE_LINUX_UUID=false
 GRUB_DISABLE_OS_PROBER=false
 GRUB_THEME="/boot/grub/themes/argon/theme.txt"
+GRUB_TERMINAL_OUTPUT="gfxterm"
 GRUB_GFXMODE="1920x1080,auto"
 GRUB_GFXPAYLOAD_LINUX=keep
-GRUB_CMDLINE_LINUX="root=UUID=$root_uuid rootfstype=ext4"
+GRUB_CMDLINE_LINUX=""
 GRUB_CMDLINE_LINUX_DEFAULT="quiet"
 EOF
 

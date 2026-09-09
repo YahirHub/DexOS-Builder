@@ -5,6 +5,7 @@ HOSTNAME="${1:-dex}"
 ARGON_ASSET=/work/server/assets/argon-grub-theme
 WEB_ASSET=/work/server/web
 INSTALLED_ASSET=/work/server/installed
+GENERATED_WIFI=/work/cache/generated-installed/wifi
 LIVE_HELPER=/work/server/dex-installer-live
 LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon de GRUB" >&2; exit 1; }
@@ -14,7 +15,7 @@ LIVE_SERVICE=/work/server/openrc/dex-installer-live
 [ -x "$WEB_ASSET/cgi-bin/install.cgi" ] || { echo "Falta CGI de instalación" >&2; exit 1; }
 [ -x "$LIVE_HELPER" ] || { echo "Falta helper Dex-Installer Live" >&2; exit 1; }
 [ -x "$LIVE_SERVICE" ] || { echo "Falta servicio OpenRC Dex-Installer Live" >&2; exit 1; }
-[ -x "$INSTALLED_ASSET/wifi" ] || { echo "Falta herramienta wifi" >&2; exit 1; }
+[ -x "$GENERATED_WIFI" ] || { echo "Falta binario Wi-Fi TUI compilado" >&2; exit 1; }
 [ -x "$INSTALLED_ASSET/diskinfo" ] || { echo "Falta diskinfo" >&2; exit 1; }
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -93,6 +94,7 @@ cp /work/server/packages.txt "$tmp/usr/share/dexos/server-packages.txt"
 cp -a "$ARGON_ASSET/." "$tmp/usr/share/dexos/argon-grub-theme/"
 cp -a "$WEB_ASSET/." "$tmp/usr/share/dexos/installer-web/"
 cp -a "$INSTALLED_ASSET/." "$tmp/usr/share/dexos/installed/"
+cp "$GENERATED_WIFI" "$tmp/usr/share/dexos/installed/wifi"
 
 cat > "$tmp/etc/motd" <<'EOF'
 DexOS Server

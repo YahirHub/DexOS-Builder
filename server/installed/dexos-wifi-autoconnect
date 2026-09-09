@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+
+description="DexOS Wi-Fi autoconnect"
+command="/usr/local/sbin/dexos-wifi-connect"
+command_background="no"
+
+start_pre() {
+    [ -f /etc/NetworkManager/system-connections/dexos-wifi.nmconnection ]
+}
+
+depend() {
+    need dbus wpa_supplicant networkmanager
+    after networkmanager
+}

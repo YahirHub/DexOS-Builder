@@ -37,7 +37,7 @@ Permitir instalar DexOS Server sobre particiones existentes aunque no tengan fil
 - [x] AP+STA simultáneo descartado tras la prueba física del usuario; se sustituyó por configuración Wi-Fi para el primer arranque.
 - [x] Diagnosticar la carrera del primer arranque: la radio aparecía antes de que el SSID estuviera disponible en el scan de NetworkManager.
 - [x] Añadir dependencias explícitas `dbus` + `wpa_supplicant` + `networkmanager`, scan dirigido, `hidden yes`, tres intentos y log de diagnóstico.
-- [ ] Validar en hardware físico la nueva ISO con el Wi-Fi diferido corregido y `diskinfo`; cerrar la tarea después de esa prueba.
+- [x] La validación física del servicio diferido mostró que seguía fallando; ese enfoque fue sustituido por perfil persistente y luego por activación explícita OpenRC.
 
 ## ISO actual para prueba física
 - `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`
@@ -92,5 +92,27 @@ El estado distingue `no-wifi-device`, `no-ap-capability` y `activation-failed`, 
 - [x] Mantener `wpa_supplicant` como dependencia/servicio de NetworkManager.
 - [x] Hacer obligatorio ext4: comprobar `blkid` inmediatamente después de `mkfs.ext4` y `findmnt` después de montar la raíz.
 - [x] E2E QEMU en disco nuevo confirmó `/dev/vda3 TYPE=ext4`, perfil Wi-Fi persistente y ausencia del antiguo firstboot.
-- [ ] Validar en hardware físico la nueva ISO con el perfil NetworkManager persistente y `diskinfo`.
+- [x] La prueba física del perfil NetworkManager silencioso confirmó que no se activaba de forma fiable; se sustituyó por un servicio visible que fuerza `connection up` y deja diagnóstico.
 - ISO SHA-256: `0fbdb5a5101ee2bbd8200359f1e2046652e68e5c53751840f50c239a973db38b`.
+
+### Revisión 2026-09-09 — Wi-Fi visible al boot, GRUB Argon, Bash y TUI
+- [x] Hacer que NetworkManager reintente indefinidamente el perfil Wi-Fi persistente y mostrar una activación/diagnóstico explícito durante OpenRC.
+- [x] Sustituir el script `wifi` por un binario TUI interactivo compilado y sin dependencias de runtime adicionales.
+- [x] Instalar Bash en Live y sistema final; root y el administrador usan `/bin/bash` en el sistema instalado.
+- [x] Forzar Argon en GRUB gráfico y ordenar la entrada principal de DexOS antes de `os-prober` y del fallback de otros sistemas.
+- [x] Aplicar Argon también al GRUB UEFI del medio Live con la opción `Instalar Alpine Linux` y fallbacks para Windows/otro Linux.
+- [x] Recompilar ISO; validar tests estáticos, unit tests Go, TUI real en PTY, helper de autoconexión con `nmcli` simulado, `grub-script-check` y contenido final de la ISO.
+
+
+### Resultado actual 2026-09-09
+- [x] Perfil `DexOS WiFi`: `autoconnect=true`, prioridad 80 y `autoconnect-retries=0` (NetworkManager reintenta indefinidamente).
+- [x] `/etc/init.d/dexos-wifi-autoconnect` depende de dbus+wpa_supplicant+NetworkManager; ejecuta `/usr/local/sbin/dexos-wifi-connect`, muestra el SSID/adaptador/resultado durante el arranque y guarda detalle en `/var/log/dexos-wifi-autoconnect.log`.
+- [x] El helper fuerza un scan dirigido y `nmcli --wait 35 connection up "DexOS WiFi" ifname <wifi>`. Si falla, deja el motivo y NetworkManager continúa reintentando.
+- [x] `wifi` ahora es un binario Go estático (~1.8 MiB) con TUI: flechas, Enter, refrescar, SSID oculto y contraseña sin eco. El parser neutraliza caracteres de control de SSIDs y no pasa contraseñas por argv.
+- [x] Bash se incluye en el repositorio offline/Live/target; root y el administrador usan `/bin/bash` tras instalar.
+- [x] GRUB instalado usa Argon (`gfxterm`, `1920x1080,auto`) y `/etc/grub.d/09_dexos_linux` coloca `DexOS Server (Alpine Linux)` antes de `30_os-prober`/`31_dexos_other_os`; `10_linux` se deshabilita para no duplicar DexOS.
+- [x] GRUB UEFI de la ISO usa el mismo Argon, primera opción `Instalar Alpine Linux`, seguida de fallbacks de Windows y otro Linux cuando GRUB puede encontrarlos.
+- [x] Compatibilidad de la entrada principal DexOS con GPT y MBR (`part_gpt` + `part_msdos`).
+- [x] El build tolera un fallo DNS transitorio del mirror sólo cuando ya existe un APKINDEX cacheado firmado; paquetes ausentes siguen haciendo fallar el build.
+- [x] ISO final: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, `742391808` bytes (~708 MiB), SHA-256 `8549d2e1a9a7e4d99b590a0fd32233d9c76d183db9164f91a95b93ac56bca31c`, APKINDEX 195 paquetes.
+- [ ] Validar en el hardware físico del usuario que el servicio muestre el diagnóstico durante boot y que la conexión real se complete; después probar el TUI `wifi` y el GRUB Argon.

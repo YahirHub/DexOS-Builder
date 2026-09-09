@@ -2,6 +2,7 @@
 alpine-base
 alpine-conf
 busybox-extras
+bash
 ca-certificates
 tzdata
 doas

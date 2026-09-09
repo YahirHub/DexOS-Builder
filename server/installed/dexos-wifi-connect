@@ -1,0 +1,80 @@
+#!/bin/sh
+set -u
+
+PROFILE='DexOS WiFi'
+LOG=/var/log/dexos-wifi-autoconnect.log
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+mkdir -p /var/log
+: > "$LOG"
+chmod 0600 "$LOG"
+
+log() {
+    printf 'DexOS Wi-Fi: %s\n' "$*" | tee -a "$LOG"
+}
+
+fail() {
+    log "ERROR: $*"
+    return 1
+}
+
+command -v nmcli >/dev/null 2>&1 || { fail 'nmcli no está disponible.'; exit 1; }
+
+log 'cargando perfil guardado de NetworkManager...'
+nmcli connection reload >>"$LOG" 2>&1 || true
+if ! nmcli -t -f NAME connection show 2>/dev/null | grep -Fxq "$PROFILE"; then
+    fail "no existe el perfil '$PROFILE'."
+    exit 1
+fi
+
+ssid=$(nmcli -g 802-11-wireless.ssid connection show "$PROFILE" 2>/dev/null | head -n 1)
+[ -n "$ssid" ] || ssid='(SSID desconocido)'
+log "red configurada: $ssid"
+
+# NetworkManager owns retry policy. Zero means retry autoconnect forever.
+nmcli connection modify "$PROFILE" connection.autoconnect yes connection.autoconnect-retries 0 >>"$LOG" 2>&1 || true
+nmcli radio wifi on >>"$LOG" 2>&1 || true
+
+dev=''
+waited=0
+while [ "$waited" -lt 45 ]; do
+    dev=$(nmcli -t -f DEVICE,TYPE device status 2>/dev/null | awk -F: '$2=="wifi" && $1!="" {print $1; exit}')
+    [ -n "$dev" ] && break
+    sleep 1
+    waited=$((waited + 1))
+done
+
+if [ -z "$dev" ]; then
+    fail 'NetworkManager no detectó ningún adaptador Wi-Fi después de 45 s.'
+    nmcli -f DEVICE,TYPE,STATE,CONNECTION device status >>"$LOG" 2>&1 || true
+    exit 1
+fi
+
+log "adaptador detectado: $dev"
+if nmcli -t -f NAME,TYPE connection show --active 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1}' | grep -Fxq "$PROFILE"; then
+    log 'conexión ya activa.'
+    exit 0
+fi
+
+# Trigger an SSID-directed scan. Failure is non-fatal because hidden profiles can
+# still probe the SSID when NetworkManager activates the saved connection.
+nmcli device wifi rescan ifname "$dev" ssid "$ssid" >>"$LOG" 2>&1 || true
+sleep 2
+
+log "activando '$PROFILE'..."
+tmp=/run/dexos-wifi-connect.$$
+trap 'rm -f "$tmp"' EXIT HUP INT TERM
+if nmcli --wait 35 connection up "$PROFILE" ifname "$dev" >"$tmp" 2>&1; then
+    cat "$tmp" >>"$LOG"
+    state=$(nmcli -g GENERAL.STATE device show "$dev" 2>/dev/null | head -n 1)
+    conn=$(nmcli -g GENERAL.CONNECTION device show "$dev" 2>/dev/null | head -n 1)
+    log "conectado: ${conn:-$PROFILE} (${state:-estado desconocido})."
+    exit 0
+fi
+
+cat "$tmp" | tee -a "$LOG" >&2
+reason=$(nmcli -g GENERAL.REASON device show "$dev" 2>/dev/null | head -n 1)
+state=$(nmcli -g GENERAL.STATE device show "$dev" 2>/dev/null | head -n 1)
+log "falló la activación inicial; estado=${state:-desconocido}, razón=${reason:-desconocida}."
+log 'NetworkManager seguirá reintentando en segundo plano. Ejecuta `wifi` para corregir o elegir otra red.'
+exit 1

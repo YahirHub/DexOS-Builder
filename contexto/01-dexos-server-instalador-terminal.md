@@ -280,3 +280,20 @@ La ISO inmediatamente anterior al arreglo final del hotspot quedó archivada com
 - La raíz se formatea mediante `format_root_ext4`: `wipefs`, `mkfs.ext4 -F -L DexOS-Server`, verificación inmediata con `blkid -p -s TYPE` y aborto si no devuelve exactamente `ext4`. Tras montar se verifica nuevamente con `findmnt -nro FSTYPE`.
 - E2E real con un disco QEMU nuevo: `/dev/vda3` quedó `TYPE="ext4"`; `lsblk` reportó `ext4`; el perfil Wi-Fi quedó modo 600 con autoconnect y WPA-PSK; NetworkManager y wpa_supplicant quedaron habilitados; no quedaron artefactos del antiguo firstboot.
 - ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, 741343232 bytes, SHA-256 `0fbdb5a5101ee2bbd8200359f1e2046652e68e5c53751840f50c239a973db38b`.
+
+
+# Autoconexión Wi-Fi visible + TUI compilado + Bash + GRUB Argon Live 2026-09-09
+- La prueba física del perfil NetworkManager persistente confirmó que no bastaba con dejar `autoconnect=true`: en el boot no aparecía diagnóstico ni se conectaba. La solución actual mantiene el keyfile pero añade activación explícita y observable.
+- El perfil `dexos-wifi.nmconnection` lleva `autoconnect-retries=0`; para NetworkManager significa reintentos de autoconexión sin límite.
+- Si se configuró Wi-Fi en el instalador se habilita `/etc/init.d/dexos-wifi-autoconnect`, con dependencias `dbus`, `wpa_supplicant` y `networkmanager`. Ejecuta `/usr/local/sbin/dexos-wifi-connect` después de NetworkManager.
+- El helper imprime durante el boot: carga del perfil, SSID, adaptador detectado, activación y resultado. Espera hasta 45 s por la radio, fuerza scan del SSID y ejecuta `nmcli --wait 35 connection up DexOS WiFi ifname <dev>`. El detalle se guarda en `/var/log/dexos-wifi-autoconnect.log` modo 0600. Si falla no elimina el perfil: NetworkManager sigue reintentando y el usuario puede ejecutar `wifi`.
+- El antiguo script shell `wifi` se sustituyó por un programa Go compilado estáticamente en cada build (`CGO_ENABLED=0`, `-trimpath`, `-s -w`). El binario se instala como `/usr/local/bin/wifi`.
+- TUI `wifi`: escaneo, orden por señal, flechas, Enter para conectar, `R` refrescar, `M` para SSID oculto y `Q` salir. Oculta la contraseña, la entrega por stdin a `nmcli --ask`, rechaza Enterprise/EAP sin parámetros específicos y neutraliza caracteres de control del SSID. `wifi status`, `wifi scan` y `wifi help` permanecen disponibles como modo texto.
+- Bash se añadió a Live y target. El usuario administrador y root quedan con `/bin/bash` como shell en el sistema instalado.
+- GRUB instalado conserva el tema Argon previamente validado: `GRUB_THEME=/boot/grub/themes/argon/theme.txt`, `gfxterm`, `GRUB_GFXMODE=1920x1080,auto`, `GRUB_GFXPAYLOAD_LINUX=keep`.
+- `/etc/grub.d/09_dexos_linux` genera primero `DexOS Server (Alpine Linux)` por UUID/ext4 y contempla GPT/MBR. Se deshabilitan los generadores estándar `10_linux`/`20_linux_xen` para evitar duplicados. `30_os-prober` y `31_dexos_other_os` continúan después, por lo que otros Windows/Linux aparecen debajo cuando son detectables.
+- El GRUB UEFI del medio Live también usa Argon y muestra primero `Instalar Alpine Linux`; añade un fallback para Windows Boot Manager y un Linux cuyo GRUB se encuentre en la misma raíz. La detección completa de múltiples sistemas sigue siendo responsabilidad del GRUB instalado, donde sí se ejecutan `os-prober` y el detector DexOS.
+- Validación: pruebas estáticas PASS; `go test` PASS; binario TUI arrancado en PTY con redes simuladas; helper de boot probado con `nmcli` simulado y salida visible; GRUB Live pasó `grub-script-check`; ISO inspeccionada con Bash, NetworkManager, wpa_supplicant y los nuevos assets.
+- El builder recibió un fallback acotado para fallos DNS temporales del mirror: sólo usa APKINDEX cacheado si ya existe; una dependencia no cacheada sigue abortando el build.
+- ISO actual: `/workspace/yah-alpine/out/DexOS-Server-edge-x86_64.iso`, `742391808` bytes (~708 MiB), SHA-256 `8549d2e1a9a7e4d99b590a0fd32233d9c76d183db9164f91a95b93ac56bca31c`, APKINDEX offline 195 paquetes.
+- Pendiente real: prueba física del nuevo servicio Wi-Fi/TUI y confirmación visual de Argon en el equipo del usuario.
