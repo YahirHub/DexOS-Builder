@@ -1,0 +1,12 @@
+#!/sbin/openrc-run
+name="DexOS balanced power"
+description="Apply balanced CPU energy settings for cooler and quieter operation"
+
+command=/usr/local/sbin/dexos-power-apply
+command_background=false
+
+depend() {
+    need dbus
+    after modules
+    before lightdm
+}

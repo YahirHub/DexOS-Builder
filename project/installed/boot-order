@@ -1,0 +1,95 @@
+#!/bin/sh
+set -eu
+
+CFG=/boot/grub/grub.cfg
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+load_entries() {
+    [ -f "$CFG" ] || {
+        echo "ERROR: no existe $CFG. Ejecuta grub-update primero." >&2
+        exit 1
+    }
+    sed -n "s/^[[:space:]]*menuentry '\([^']*\)'.*/\1/p" "$CFG" > "$TMP"
+    [ -s "$TMP" ] || {
+        echo "ERROR: no se encontraron entradas de arranque en $CFG." >&2
+        exit 1
+    }
+}
+
+current_index() {
+    grub-editenv list 2>/dev/null | sed -n 's/^saved_entry=//p' | head -1 || true
+}
+
+list_machine() {
+    load_entries
+    current=$(current_index)
+    idx=0
+    while IFS= read -r title; do
+        mark=0
+        [ "$current" = "$idx" ] && mark=1
+        printf '%s\t%s\t%s\n' "$idx" "$mark" "$title"
+        idx=$((idx + 1))
+    done < "$TMP"
+}
+
+require_root() {
+    [ "$(id -u)" -eq 0 ] && return 0
+    echo 'ERROR: se requieren privilegios de administrador.' >&2
+    exit 77
+}
+
+set_default() {
+    selected=${1:-}
+    case "$selected" in ''|*[!0-9]*) echo 'ERROR: índice inválido.' >&2; exit 2 ;; esac
+    load_entries
+    count=$(wc -l < "$TMP" | tr -d ' ')
+    [ "$selected" -lt "$count" ] || { echo 'ERROR: índice fuera de rango.' >&2; exit 2; }
+    require_root
+    grub-set-default "$selected"
+    title=$(sed -n "$((selected + 1))p" "$TMP")
+    printf 'Predeterminado: %s\n' "$title"
+}
+
+case "${1:-}" in
+    --list)
+        [ "$#" -eq 1 ] || { echo 'Uso: boot-order --list' >&2; exit 2; }
+        list_machine
+        exit 0
+        ;;
+    --set)
+        [ "$#" -eq 2 ] || { echo 'Uso: boot-order --set INDICE' >&2; exit 2; }
+        set_default "$2"
+        exit 0
+        ;;
+    --help|-h)
+        echo 'Uso: boot-order [--list | --set INDICE]'
+        exit 0
+        ;;
+    '') ;;
+    *) echo 'Uso: boot-order [--list | --set INDICE]' >&2; exit 2 ;;
+esac
+
+load_entries
+current=$(current_index)
+printf '%s\n\n' 'DexOS - selección de arranque predeterminado'
+idx=1
+while IFS= read -r title; do
+    marker=' '
+    zero=$((idx - 1))
+    [ "$current" = "$zero" ] && marker='*'
+    printf ' %s %d) %s\n' "$marker" "$idx" "$title"
+    idx=$((idx + 1))
+done < "$TMP"
+count=$((idx - 1))
+printf '\nSelecciona la entrada que arrancará por defecto [1-%s]: ' "$count"
+IFS= read -r choice
+case "$choice" in ''|*[!0-9]*) echo 'Selección cancelada.'; exit 0 ;; esac
+[ "$choice" -ge 1 ] && [ "$choice" -le "$count" ] || { echo 'Selección fuera de rango.' >&2; exit 1; }
+selected=$((choice - 1))
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v doas >/dev/null 2>&1; then exec doas "$0" --set "$selected"; fi
+    echo 'ERROR: ejecuta esta herramienta como root.' >&2
+    exit 1
+fi
+set_default "$selected"

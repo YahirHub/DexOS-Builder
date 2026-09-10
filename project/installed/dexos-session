@@ -1,7 +1,7 @@
 #!/bin/sh
 # Locale must be chosen before XFCE starts so gettext-based components inherit it.
-export XCURSOR_THEME=Breeze
-export XCURSOR_SIZE=24
+export XCURSOR_THEME=DexOS-Windows
+export XCURSOR_SIZE=32
 /usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
 locale=$(/usr/local/bin/dexos-language 2>/tmp/dexos-language.log || printf '%s\n' 'es_ES.UTF-8')
 case "$locale" in
@@ -15,6 +15,7 @@ case "$locale" in
 esac
 export LANG="$locale" LC_MESSAGES="$locale" LANGUAGE="$language"
 export MOZ_X11_EGL=1
+/usr/local/bin/dexos-prepare-desktop >/tmp/dexos-prepare-desktop.log 2>&1 || true
 # Run these before XFCE as background waiters. They do not depend on the
 # autostart manager and apply only after xfdesktop/GVfs become ready.
 /usr/local/bin/dexos-apply-theme >/tmp/dexos-apply-theme.log 2>&1 &

@@ -1,0 +1,4 @@
+[Icon Theme]
+Name=DexOS Windows
+Comment=Puntero claro de DexOS con geometría familiar tipo Windows
+Inherits=Adwaita

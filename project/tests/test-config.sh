@@ -137,7 +137,14 @@ grep -q 'alsactl init' rootfs/usr/local/bin/dexos-audio-init
 test -f rootfs/usr/share/dexos/argon-grub-theme/theme.txt
 test -f rootfs/usr/share/dexos/argon-grub-theme/background.png
 test -f rootfs/usr/share/dexos/argon-grub-theme/LICENCE.txt
-grep -q 'Instalar junto a Windows' rootfs/usr/local/bin/dexos-installer
+test -x rootfs/usr/share/dexos/installed/boot-order
+test -x rootfs/usr/share/dexos/installed/grub-update
+test -x rootfs/usr/share/dexos/installed/grub-other-os
+test -x rootfs/usr/share/dexos/installed/05_dexos_theme
+test -x rootfs/usr/share/dexos/installed/09_dexos_linux
+grep -q "menuentry 'DexOS'" rootfs/usr/share/dexos/installed/09_dexos_linux
+grep -q 'emit_efi_loader' rootfs/usr/share/dexos/installed/grub-other-os
+grep -q 'Coexistir con Windows / Linux' rootfs/usr/local/bin/dexos-installer
 grep -q 'Abrir GParted' rootfs/usr/local/bin/dexos-installer
 grep -q 'GRUB_DISABLE_OS_PROBER=false' rootfs/usr/local/libexec/dexos-installer-backend
 
@@ -159,7 +166,9 @@ grep -q 'value="pulseaudio"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfc
 grep -q 'name="volume-max" type="uint" value="150"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 for p in pipewire pipewire-pulse wireplumber alsa-utils alsa-ucm-conf sof-firmware pavucontrol xfce4-pulseaudio-plugin; do grep -qx "$p" rootfs/etc/apk/world; done
 test -x rootfs/usr/local/bin/dexos-audio-init
-grep -q 'wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0' rootfs/usr/local/bin/dexos-audio-init
+! grep -q 'wpctl set-volume' rootfs/usr/local/bin/dexos-audio-init
+! grep -q 'wpctl set-mute' rootfs/usr/local/bin/dexos-audio-init
+grep -q '/var/lib/alsa/asound.state' rootfs/usr/local/bin/dexos-audio-init
 
 for p in gparted os-prober ntfs-3g ntfs-3g-progs; do grep -qx "$p" rootfs/etc/apk/world; done
 test -f rootfs/usr/share/dexos/argon-grub-theme/theme.txt
@@ -206,12 +215,12 @@ test -s rootfs/usr/share/xfce4/backdrops/DexOS.png
 cmp -s rootfs/usr/share/dexos/dexos-wallpaper.png rootfs/usr/share/backgrounds/xfce/DexOS.png
 cmp -s rootfs/usr/share/dexos/dexos-wallpaper.png rootfs/usr/share/xfce4/backdrops/DexOS.png
 grep -qx 'breeze-cursors' rootfs/etc/apk/world
-grep -q 'CursorThemeName" type="string" value="Breeze"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
+grep -q 'CursorThemeName" type="string" value="DexOS-Windows"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
 grep -q 'xsetroot -cursor_name left_ptr' rootfs/usr/local/sbin/dexos-xsetup
 grep -q 'monitor${mon}/workspace0' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'xfdesktop --reload' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'xfce-perchannel-xml/xfce4-desktop.xml' rootfs/etc/init.d/dexos-live-user
-grep -q 'export XCURSOR_THEME=Breeze' rootfs/usr/local/bin/dexos-session
+grep -q 'export XCURSOR_THEME=DexOS-Windows' rootfs/usr/local/bin/dexos-session
 grep -q 'Gdk.Cursor.new_from_name' rootfs/usr/local/bin/dexos-language
 
 
@@ -219,7 +228,7 @@ grep -q 'Gdk.Cursor.new_from_name' rootfs/usr/local/bin/dexos-language
 grep -q '/usr/local/bin/dexos-apply-theme' rootfs/usr/local/bin/dexos-session
 grep -q '/usr/local/bin/dexos-trust-launchers' rootfs/usr/local/bin/dexos-session
 test -x rootfs/usr/share/dexos/installed/patch-initramfs-init.py
-grep -q '^cursor-theme-name=Breeze$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
+grep -q '^cursor-theme-name=DexOS-Windows$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 ! grep -q '~language' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 
 
@@ -227,5 +236,72 @@ grep -q '^cursor-theme-name=Breeze$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 grep -q '/proc/$xpid/environ' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'DBUS_SESSION_BUS_ADDRESS' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'set_backdrop' rootfs/usr/local/bin/dexos-apply-theme
+
+
+# v008: wallpaper is prepared before XFCE and XFCE's own fallback is DexOS.
+test -x rootfs/usr/local/bin/dexos-prepare-desktop
+grep -q 'xrandr --query' rootfs/usr/local/bin/dexos-prepare-desktop
+grep -q 'monitor%s' rootfs/usr/local/bin/dexos-prepare-desktop
+grep -q '/usr/share/dexos/dexos-wallpaper.png' rootfs/usr/local/bin/dexos-prepare-desktop
+grep -q 'dexos-prepare-desktop' rootfs/usr/local/bin/dexos-session
+test -L rootfs/usr/share/backgrounds/xfce/xfce-x.svg
+[ "$(readlink rootfs/usr/share/backgrounds/xfce/xfce-x.svg)" = '/usr/share/dexos/dexos-wallpaper.png' ]
+
+
+# v010: Windows-like cursor, visible menu categories, balanced power and desktop utilities.
+for p in redshift geoclue geoclue-lang power-profiles-daemon; do grep -qx "$p" rootfs/etc/apk/world; done
+test -L rootfs/usr/share/icons/Adwaita-Xfce
+[ "$(readlink rootfs/usr/share/icons/Adwaita-Xfce)" = 'adwaita-xfce' ]
+test -L rootfs/usr/share/icons/adwaita-xfce/scalable/categories/applications.svg
+test -f rootfs/usr/share/icons/DexOS-Windows/index.theme
+test -s rootfs/usr/share/icons/DexOS-Windows/cursors/left_ptr
+grep -q '^cursor-theme-name=DexOS-Windows$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
+grep -q 'value="DexOS-Windows"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
+grep -q 'export XCURSOR_SIZE=32' rootfs/usr/local/bin/dexos-session
+test -x rootfs/etc/init.d/dexos-power
+test -x rootfs/usr/local/sbin/dexos-power-apply
+test -L rootfs/etc/runlevels/default/dexos-power
+grep -q 'powerprofilesctl set balanced' rootfs/usr/local/sbin/dexos-power-apply
+grep -q 'energy_performance_preference' rootfs/usr/local/sbin/dexos-power-apply
+grep -q 'scaling_governor' rootfs/usr/local/sbin/dexos-power-apply
+test -x rootfs/usr/local/bin/dexos-eye-protection
+test -f rootfs/etc/redshift.conf
+grep -q '^adjustment-method=randr$' rootfs/etc/redshift.conf
+grep -q '^location-provider=geoclue2$' rootfs/etc/redshift.conf
+test -f rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
+grep -q '^\[redshift\]$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
+grep -q '^allowed=true$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
+grep -q '^Exec=/usr/local/bin/dexos-eye-protection --startup$' rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
+grep -q 'Iniciar protección automáticamente al entrar a DexOS' rootfs/usr/local/bin/dexos-eye-protection
+grep -q 'Ajustar automáticamente con ubicación (GeoClue2)' rootfs/usr/local/bin/dexos-eye-protection
+test -f rootfs/usr/share/applications/dexos-eye-protection.desktop
+test -f rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
+grep -q "redshift', '-m', 'randr', '-l', 'geoclue2'" rootfs/usr/local/bin/dexos-eye-protection
+test -x rootfs/usr/local/bin/dexos-boot-manager
+test -f rootfs/usr/share/applications/dexos-boot-manager.desktop
+test -x rootfs/etc/skel/Desktop/Orden-de-arranque.desktop
+grep -q 'Escanear discos y actualizar GRUB' rootfs/usr/local/bin/dexos-boot-manager
+grep -q "BOOT_ORDER, '--set'" rootfs/usr/local/bin/dexos-boot-manager
+grep -q '^    --list)' rootfs/usr/share/dexos/installed/boot-order
+grep -q '^    --set)' rootfs/usr/share/dexos/installed/boot-order
+grep -q 'INTERVAL=86400' rootfs/etc/init.d/dexos-apk-refresh
+! grep -q 'glxinfo -B' rootfs/usr/local/bin/dexos-video-init
+
+
+# v013: persistent mixer/backlight state and privileged GRUB UI.
+grep -qx 'alsa-utils-openrc' rootfs/etc/apk/world
+test -L rootfs/etc/runlevels/default/alsa
+test -x rootfs/etc/init.d/dexos-backlight
+test -L rootfs/etc/runlevels/default/dexos-backlight
+grep -q 'STATE_DIR=/var/lib/dexos/backlight' rootfs/etc/init.d/dexos-backlight
+grep -q 'save_backlights' rootfs/etc/init.d/dexos-backlight
+grep -q 'restore_backlights' rootfs/etc/init.d/dexos-backlight
+test -x rootfs/usr/share/dexos/installed/dexos-backlight-state
+test -f rootfs/usr/share/polkit-1/actions/org.dexos.boot-manager.policy
+test -f rootfs/usr/share/dexos/installed/org.dexos.boot-manager.policy
+grep -q 'auth_admin_keep' rootfs/usr/share/polkit-1/actions/org.dexos.boot-manager.policy
+grep -q 'org.freedesktop.policykit.exec.allow_gui' rootfs/usr/share/polkit-1/actions/org.dexos.boot-manager.policy
+grep -q "ensure_admin()" rootfs/usr/local/bin/dexos-boot-manager
+grep -q "os.execv(pkexec" rootfs/usr/local/bin/dexos-boot-manager
 
 echo 'test-config: OK'

@@ -1,0 +1,407 @@
+#!/bin/sh
+# GRUB fallback detector for DexOS.
+# This file is installed as /etc/grub.d/31_dexos_other_os and therefore must
+# write only valid GRUB syntax to stdout. Diagnostics always go to stderr.
+set -u
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+WORK=$(mktemp -d /tmp/dexos-grub-scan.XXXXXX) || exit 0
+MNT="$WORK/root"
+BOOTMNT="$WORK/boot"
+SEEN="$WORK/seen"
+OSPROBED="$WORK/os-prober"
+mkdir -p "$MNT" "$BOOTMNT"
+: > "$SEEN"
+: > "$OSPROBED"
+
+cleanup() {
+    umount "$BOOTMNT" >/dev/null 2>&1 || true
+    umount "$MNT" >/dev/null 2>&1 || true
+    rm -rf "$WORK" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT HUP INT TERM
+
+log() { printf 'DexOS GRUB: %s\n' "$*" >&2; }
+
+resolve_spec() {
+    spec=${1:-}
+    case "$spec" in
+        UUID=*) blkid -U "${spec#UUID=}" 2>/dev/null || true ;;
+        LABEL=*) blkid -L "${spec#LABEL=}" 2>/dev/null || true ;;
+        /dev/*) readlink -f "$spec" 2>/dev/null || printf '%s\n' "$spec" ;;
+        *) return 1 ;;
+    esac
+}
+
+safe_name() {
+    # Never evaluate foreign os-release data. Keep only display-safe characters.
+    printf '%s' "$1" \
+        | tr '\n\r\t:' '    ' \
+        | sed "s/'/_/g; s/[^[:alnum:] ._()+@,\/-]/_/g; s/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//" \
+        | cut -c1-96
+}
+
+read_os_name() {
+    dir=$1
+    file=''
+    [ -f "$dir/etc/os-release" ] && file="$dir/etc/os-release"
+    [ -n "$file" ] || [ ! -f "$dir/usr/lib/os-release" ] || file="$dir/usr/lib/os-release"
+    [ -n "$file" ] || return 1
+
+    name=$(sed -n 's/^PRETTY_NAME=//p' "$file" 2>/dev/null | head -n 1)
+    [ -n "$name" ] || name=$(sed -n 's/^NAME=//p' "$file" 2>/dev/null | head -n 1)
+    name=$(printf '%s' "$name" | sed 's/^"//; s/"$//; s/^'"'"'//; s/'"'"'$//')
+    safe_name "$name"
+}
+
+mark_seen() {
+    printf '%s\n' "$1" >> "$SEEN"
+}
+
+is_seen() {
+    grep -Fxq "$1" "$SEEN" 2>/dev/null
+}
+
+# os-prober is still the primary detector. This fallback only fills gaps.
+if command -v os-prober >/dev/null 2>&1; then
+    os-prober > "$OSPROBED" 2>/dev/null || true
+fi
+
+standard_handles() {
+    wanted=$1
+    [ -s "$OSPROBED" ] || return 1
+
+    while IFS=: read -r probe long label kind rest; do
+        [ -n "${probe:-}" ] || continue
+        probe_dev=${probe%@*}
+        probe_dev=$(readlink -f "$probe_dev" 2>/dev/null || printf '%s' "$probe_dev")
+        [ "$probe_dev" = "$wanted" ] || continue
+        case "${kind:-}" in
+            linux)
+                if command -v linux-boot-prober >/dev/null 2>&1 \
+                    && linux-boot-prober "$wanted" 2>/dev/null | grep -q .; then
+                    return 0
+                fi
+                ;;
+            chain|efi|macosx|hurd|minix)
+                return 0
+                ;;
+        esac
+    done < "$OSPROBED"
+    return 1
+}
+
+mount_ro() {
+    dev=$1
+    fstype=$2
+    dst=$3
+
+    existing=$(findmnt -rn -S "$dev" -o TARGET 2>/dev/null | head -n 1)
+    if [ -n "$existing" ] && [ -d "$existing" ]; then
+        printf '%s|0\n' "$existing"
+        return 0
+    fi
+
+    umount "$dst" >/dev/null 2>&1 || true
+    case "$fstype" in
+        ext2|ext3|ext4)
+            mount -o ro,noload "$dev" "$dst" >/dev/null 2>&1 || return 1
+            ;;
+        *)
+            mount -o ro "$dev" "$dst" >/dev/null 2>&1 || return 1
+            ;;
+    esac
+    printf '%s|1\n' "$dst"
+}
+
+unmount_if_owned() {
+    dst=$1
+    owned=$2
+    [ "$owned" = 1 ] || return 0
+    umount "$dst" >/dev/null 2>&1 || true
+}
+
+emit_configfile() {
+    name=$1
+    uuid=$2
+    cfg=$3
+    dev=$4
+    key="config:$uuid:$cfg"
+    is_seen "$key" && return 0
+    mark_seen "$key"
+    name=$(safe_name "$name")
+    [ -n "$name" ] || name='Otro Linux'
+    log "fallback: $name en $dev mediante $cfg"
+    cat <<EOF_GRUB
+menuentry '$name (menú propio, $dev)' --class gnu-linux --class gnu --class os {
+    search --no-floppy --fs-uuid --set=root $uuid
+    configfile $cfg
+}
+EOF_GRUB
+}
+
+emit_linux_kernel() {
+    name=$1
+    boot_uuid=$2
+    root_uuid=$3
+    kernel=$4
+    initrd=$5
+    root_fstype=$6
+    rootflags=$7
+    dev=$8
+    key="linux:$boot_uuid:$kernel:$root_uuid"
+    is_seen "$key" && return 0
+    mark_seen "$key"
+    name=$(safe_name "$name")
+    [ -n "$name" ] || name='Otro Linux'
+    extra="root=UUID=$root_uuid ro"
+    [ -z "$root_fstype" ] || extra="$extra rootfstype=$root_fstype"
+    [ -z "$rootflags" ] || extra="$extra rootflags=$rootflags"
+    log "fallback: $name en $dev mediante kernel $kernel"
+    cat <<EOF_GRUB
+menuentry '$name (fallback, $dev)' --class gnu-linux --class gnu --class os {
+    search --no-floppy --fs-uuid --set=root $boot_uuid
+    linux $kernel $extra
+EOF_GRUB
+    if [ -n "$initrd" ]; then
+        printf '    initrd %s\n' "$initrd"
+    fi
+    printf '}\n'
+}
+
+emit_efi_loader() {
+    label=$1
+    uuid=$2
+    path=$3
+    dev=$4
+    key="efi:$uuid:$path"
+    is_seen "$key" && return 0
+    mark_seen "$key"
+    label=$(safe_name "$label")
+    [ -n "$label" ] || label='Cargador EFI'
+    log "fallback: $label en $dev ($path)"
+    cat <<EOF_GRUB
+if [ "\$grub_platform" = "efi" ]; then
+menuentry '$label ($dev)' --class os {
+    insmod chain
+    search --no-floppy --fs-uuid --set=root $uuid
+    chainloader $path
+}
+fi
+EOF_GRUB
+}
+
+emit_windows_bios() {
+    uuid=$1
+    dev=$2
+    key="windows-bios:$uuid"
+    is_seen "$key" && return 0
+    mark_seen "$key"
+    log "fallback: Windows BIOS en $dev"
+    cat <<EOF_GRUB
+if [ "\$grub_platform" = "pc" ]; then
+menuentry 'Windows (fallback, $dev)' --class windows --class os {
+    insmod chain
+    search --no-floppy --fs-uuid --set=root $uuid
+    drivemap -s (hd0) \${root}
+    chainloader +1
+}
+fi
+EOF_GRUB
+}
+
+find_kernel() {
+    dir=$1
+    for pattern in "$dir"/vmlinuz* "$dir"/vmlinux* "$dir"/kernel-*; do
+        [ -f "$pattern" ] || continue
+        printf '%s\n' "$pattern"
+    done | head -n 1
+}
+
+find_initrd() {
+    dir=$1
+    kernel_file=$2
+    base=${kernel_file##*/}
+    suffix=$base
+    case "$base" in
+        vmlinuz*) suffix=${base#vmlinuz} ;;
+        vmlinux*) suffix=${base#vmlinux} ;;
+        kernel-*) suffix=-${base#kernel-} ;;
+    esac
+
+    for candidate in \
+        "$dir/initramfs$suffix" \
+        "$dir/initramfs$suffix.img" \
+        "$dir/initrd$suffix" \
+        "$dir/initrd$suffix.img" \
+        "$dir/initrd.img$suffix" \
+        "$dir/initramfs"* \
+        "$dir/initrd"*; do
+        [ -f "$candidate" ] || continue
+        printf '%s\n' "$candidate"
+        return 0
+    done
+    return 1
+}
+
+resolve_boot_spec() {
+    rootdir=$1
+    [ -f "$rootdir/etc/fstab" ] || return 1
+    spec=$(awk '$2 == "/boot" {print $1; exit}' "$rootdir/etc/fstab" 2>/dev/null)
+    [ -n "$spec" ] || return 1
+    resolve_spec "$spec"
+}
+
+scan_efi() {
+    dir=$1
+    uuid=$2
+    dev=$3
+    [ -d "$dir/EFI" ] || [ -d "$dir/efi" ] || return 0
+    efi_dir="$dir/EFI"
+    [ -d "$efi_dir" ] || efi_dir="$dir/efi"
+
+    for vendor_dir in "$efi_dir"/*; do
+        [ -d "$vendor_dir" ] || continue
+        vendor=${vendor_dir##*/}
+        vendor_lc=$(printf '%s' "$vendor" | tr '[:upper:]' '[:lower:]')
+        case "$vendor_lc" in
+            dexos|boot) continue ;;
+        esac
+
+        loader=''
+        for candidate in \
+            "$vendor_dir/Boot/bootmgfw.efi" "$vendor_dir/Boot/bootmgfw.EFI" \
+            "$vendor_dir/boot/bootmgfw.efi" "$vendor_dir/boot/bootmgfw.EFI" \
+            "$vendor_dir/bootmgfw.efi" "$vendor_dir/bootmgfw.EFI" \
+            "$vendor_dir/shimx64.efi" "$vendor_dir/shimx64.EFI" \
+            "$vendor_dir/grubx64.efi" "$vendor_dir/grubx64.EFI" \
+            "$vendor_dir/systemd-bootx64.efi" "$vendor_dir/systemd-bootx64.EFI" \
+            "$vendor_dir"/*.efi "$vendor_dir"/*.EFI \
+            "$vendor_dir"/*/*.efi "$vendor_dir"/*/*.EFI; do
+            [ -f "$candidate" ] || continue
+            loader=$candidate
+            break
+        done
+        [ -n "$loader" ] || continue
+        path=${loader#"$dir"}
+        # GRUB paths emitted without shell evaluation: reject unusual EFI names.
+        printf '%s\n' "$path" | grep -Eq '^/[[:alnum:]_.+@=/-]+$' || continue
+        case "$vendor_lc" in
+            microsoft) label='Windows Boot Manager' ;;
+            *) label="$vendor EFI" ;;
+        esac
+        emit_efi_loader "$label" "$uuid" "$path" "$dev"
+    done
+}
+
+root_uuid=$(findmnt -rn -o UUID / 2>/dev/null | head -n 1)
+root_dev=$(findmnt -rn -o SOURCE / 2>/dev/null | head -n 1)
+root_dev=$(resolve_spec "$root_dev" 2>/dev/null || printf '%s' "$root_dev")
+
+lsblk -npr -o NAME,TYPE,FSTYPE 2>/dev/null | while IFS=' ' read -r dev dtype fstype; do
+    [ -n "${dev:-}" ] || continue
+    case "$dtype" in part|lvm|crypt) ;; *) continue ;; esac
+    case "$fstype" in
+        ''|swap|crypto_LUKS|LVM2_member|linux_raid_member) continue ;;
+    esac
+
+    dev=$(readlink -f "$dev" 2>/dev/null || printf '%s' "$dev")
+    uuid=$(blkid -s UUID -o value "$dev" 2>/dev/null || true)
+    [ -n "$uuid" ] || continue
+    [ "$uuid" != "$root_uuid" ] || continue
+    [ "$dev" != "$root_dev" ] || continue
+
+    mount_info=$(mount_ro "$dev" "$fstype" "$MNT" 2>/dev/null || true)
+    [ -n "$mount_info" ] || continue
+    dir=${mount_info%|*}
+    owned=${mount_info##*|}
+
+    # EFI loaders are useful even when the installer itself was booted in BIOS.
+    scan_efi "$dir" "$uuid" "$dev"
+
+    if [ -f "$dir/bootmgr" ] || [ -f "$dir/BOOTMGR" ]; then
+        if ! standard_handles "$dev"; then
+            emit_windows_bios "$uuid" "$dev"
+        fi
+    fi
+
+    # If standard os-prober + linux-boot-prober already produced a usable Linux
+    # entry, don't duplicate it. Otherwise inspect the foreign root ourselves.
+    if standard_handles "$dev"; then
+        unmount_if_owned "$dir" "$owned"
+        continue
+    fi
+
+    name=$(read_os_name "$dir" 2>/dev/null || true)
+    [ -n "$name" ] || name=$(blkid -s LABEL -o value "$dev" 2>/dev/null || true)
+
+    cfg=''
+    cfg_uuid=$uuid
+    cfg_dev=$dev
+    if [ -f "$dir/boot/grub/grub.cfg" ]; then
+        cfg=/boot/grub/grub.cfg
+    elif [ -f "$dir/boot/grub2/grub.cfg" ]; then
+        cfg=/boot/grub2/grub.cfg
+    fi
+
+    boot_dir="$dir/boot"
+    kernel_prefix=/boot
+    boot_uuid=$uuid
+    boot_owned=0
+    boot_dev=''
+
+    if [ -z "$cfg" ]; then
+        boot_dev=$(resolve_boot_spec "$dir" 2>/dev/null || true)
+        if [ -n "$boot_dev" ] && [ -b "$boot_dev" ] && [ "$boot_dev" != "$dev" ]; then
+            boot_fs=$(blkid -s TYPE -o value "$boot_dev" 2>/dev/null || true)
+            boot_mount_info=$(mount_ro "$boot_dev" "$boot_fs" "$BOOTMNT" 2>/dev/null || true)
+            if [ -n "$boot_mount_info" ]; then
+                boot_dir=${boot_mount_info%|*}
+                boot_owned=${boot_mount_info##*|}
+                boot_uuid=$(blkid -s UUID -o value "$boot_dev" 2>/dev/null || true)
+                kernel_prefix=''
+                if [ -f "$boot_dir/grub/grub.cfg" ]; then
+                    cfg=/grub/grub.cfg
+                    cfg_uuid=$boot_uuid
+                    cfg_dev=$boot_dev
+                elif [ -f "$boot_dir/grub2/grub.cfg" ]; then
+                    cfg=/grub2/grub.cfg
+                    cfg_uuid=$boot_uuid
+                    cfg_dev=$boot_dev
+                fi
+            fi
+        fi
+    fi
+
+    if [ -n "$cfg" ] && [ -n "$cfg_uuid" ]; then
+        [ -n "$name" ] || name='Otro Linux'
+        emit_configfile "$name" "$cfg_uuid" "$cfg" "$cfg_dev"
+    else
+        kernel_file=$(find_kernel "$boot_dir" 2>/dev/null || true)
+        if [ -n "$kernel_file" ] && [ -n "$boot_uuid" ]; then
+            [ -n "$name" ] || name='Otro Linux'
+            kernel_path="$kernel_prefix/${kernel_file##*/}"
+            [ "$kernel_prefix" = /boot ] || kernel_path="/${kernel_file##*/}"
+            initrd_file=$(find_initrd "$boot_dir" "$kernel_file" 2>/dev/null || true)
+            initrd_path=''
+            if [ -n "$initrd_file" ]; then
+                initrd_path="$kernel_prefix/${initrd_file##*/}"
+                [ "$kernel_prefix" = /boot ] || initrd_path="/${initrd_file##*/}"
+            fi
+            rootflags=''
+            if [ -f "$dir/etc/fstab" ]; then
+                root_opts=$(awk '$2 == "/" {print $4; exit}' "$dir/etc/fstab" 2>/dev/null)
+                rootflags=$(printf '%s\n' "$root_opts" | tr ',' '\n' | grep -E '^subvol(id)?=' | head -n 1 || true)
+                printf '%s\n' "$rootflags" | grep -Eq '^subvol(id)?=[[:alnum:]_.+@/-]+$' || rootflags=''
+            fi
+            emit_linux_kernel "$name" "$boot_uuid" "$uuid" "$kernel_path" "$initrd_path" "$fstype" "$rootflags" "$dev"
+        fi
+    fi
+
+    unmount_if_owned "$boot_dir" "$boot_owned"
+    unmount_if_owned "$dir" "$owned"
+done
+
+exit 0

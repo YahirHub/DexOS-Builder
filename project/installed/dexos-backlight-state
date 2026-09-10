@@ -1,0 +1,57 @@
+#!/sbin/openrc-run
+name="DexOS backlight state"
+description="Save and restore display brightness across reboots"
+STATE_DIR=/var/lib/dexos/backlight
+
+# Restores the last absolute hardware brightness for every backlight device.
+# The value is clamped because firmware/kernel updates may change max_brightness.
+restore_backlights() {
+    [ -d /sys/class/backlight ] || return 0
+    for dev in /sys/class/backlight/*; do
+        [ -d "$dev" ] || continue
+        name=${dev##*/}
+        state="$STATE_DIR/$name"
+        [ -r "$state" ] || continue
+        value=$(cat "$state" 2>/dev/null || true)
+        max=$(cat "$dev/max_brightness" 2>/dev/null || true)
+        case "$value:$max" in
+            ''*|*[!0-9:]*) continue ;;
+        esac
+        [ "$max" -gt 0 ] 2>/dev/null || continue
+        [ "$value" -le "$max" ] || value=$max
+        [ "$value" -ge 0 ] || value=0
+        printf '%s\n' "$value" > "$dev/brightness" 2>/dev/null || true
+    done
+}
+
+save_backlights() {
+    mkdir -p "$STATE_DIR"
+    chmod 0755 "$STATE_DIR"
+    [ -d /sys/class/backlight ] || return 0
+    for dev in /sys/class/backlight/*; do
+        [ -d "$dev" ] || continue
+        name=${dev##*/}
+        value=$(cat "$dev/brightness" 2>/dev/null || true)
+        case "$value" in ''|*[!0-9]*) continue ;; esac
+        printf '%s\n' "$value" > "$STATE_DIR/$name"
+        chmod 0644 "$STATE_DIR/$name"
+    done
+}
+
+depend() {
+    need localmount
+    after modules udev
+    before lightdm
+}
+
+start() {
+    ebegin "Restoring display brightness"
+    restore_backlights
+    eend 0
+}
+
+stop() {
+    ebegin "Saving display brightness"
+    save_backlights
+    eend 0
+}

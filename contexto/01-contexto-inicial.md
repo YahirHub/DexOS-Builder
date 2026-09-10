@@ -164,3 +164,79 @@ Implementar apkovl corregido y pruebas que detecten doble gestor de dispositivos
 - ISO v007: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v007.iso`.
 - SHA-256: `41f2d211888586fb574e758cc52af08da5cf63c8b11a048addf3faf40ef9bbca`.
 - VM v007 arrancada con QCOW nuevo `/workspace/yah-alpine/runtime/dexos-v007-clean.qcow2` y túnel noVNC validado.
+
+# 2026-09-09 — Paridad del instalador Desktop con DexOS Server
+## Objetivo
+Tras estabilizar el instalador Server en hardware real, aplicar al instalador gráfico Desktop las mismas garantías de coexistencia y arranque: detección de particiones sin formato, huecos no asignados, Windows/Linux, ESP reutilizable, GPT/MBR, BIOS/UEFI y GRUB conservador.
+
+## Decisiones tomadas
+- Mantener el frontend GTK3 existente y reforzar el backend Python, evitando reescribir el instalador desde cero.
+- El modo actualmente llamado `alongside` evolucionará a coexistencia genérica con Windows/Linux.
+- Coexistencia podrá usar una partición existente elegible o crear una nueva exclusivamente dentro de un hueco no asignado.
+- La ESP nunca se formatea en coexistencia/manual; sólo el modo borrar disco crea/formatea una nueva ESP.
+- Si el Live arrancó en UEFI, una ESP válida del disco seleccionado será obligatoria. En BIOS podrá omitirse si el disco admite instalación GRUB BIOS.
+- La raíz se formatea explícitamente ext4 sólo después de una revalidación inmediata del destino.
+- Se conservarán las características Desktop ya implementadas: XFCE, branding, splash, Wi-Fi, audio y tema Argon.
+
+## Arquitectura actual
+- UI: `project/installer/dexos-installer.py` (Gtk.Assistant).
+- Backend privilegiado: `project/installer/dexos-installer-backend.py`.
+- Tests: `project/tests/test-installer.py`.
+- Referencia funcional: instalador DexOS Server respaldado en `YahirHub/DexOS-Builder`.
+
+## Problemas encontrados
+El Desktop ya tenía borrado completo, un modo "junto a Windows" y manual, pero el modo de coexistencia dependía de `parted`, sólo ofrecía discos detectados como Windows, exigía ESP incluso en BIOS y no permitía seleccionar una partición existente dentro del flujo de coexistencia.
+
+## Próximos pasos
+Implementar la paridad funcional, ejecutar tests, construir ISO y validar instalación/coexistencia en QEMU antes de marcar la tarea como completada.
+
+## 2026-09-10 — DexOS Desktop v010: UX, energía y gestor gráfico de arranque
+
+Se preparó `DexOS-edge-x86_64-v010.iso` con los siguientes cambios de escritorio:
+
+- Se corrigió la resolución del tema `Adwaita-Xfce` creando el alias de ruta esperado y se añadió el icono `applications` usado por Whisker para «Todas las aplicaciones». Las categorías Configuración e Internet vuelven a resolver sus iconos del tema `adwaita-xfce`.
+- Se añadió el tema de cursor `DexOS-Windows`, generado de forma propia con flecha blanca y borde oscuro, y se aplica tanto en LightDM como en la sesión XFCE a 32 px. Los cursores no definidos heredan de Adwaita.
+- Se añadió `power-profiles-daemon` y el servicio `dexos-power`, que pide perfil `balanced`, EPP `balance_power`/`balance_performance`, gobernador `schedutil`/`powersave` y `platform_profile=balanced` cuando el hardware lo ofrece.
+- Se redujo carga innecesaria al iniciar: `dexos-video-init` ya no ejecuta `glxinfo`, `vainfo` ni `vdpauinfo` en cada login; `dexos-apk-refresh` limita `apk update` a una vez cada 24 h y lo ejecuta con prioridad baja.
+- Se añadió `Protección de la vista`, interfaz GTK basada en `redshift`, con interruptor persistente y temperatura de 3000–6500 K. La selección se reaplica al iniciar sesión.
+- `boot-order` ahora expone `--list` y `--set` para ser usado por una interfaz gráfica sin sacrificar el modo terminal.
+- Se añadió `Orden de arranque`, aplicación GTK de escritorio que permite elegir el sistema predeterminado y ejecutar «Escanear discos y actualizar GRUB». El escaneo llama `grub-update`, que combina `os-prober` con `31_dexos_other_os` y revisa otros discos/particiones para Windows, Linux y cargadores EFI.
+- El acceso administrativo del gestor gráfico usa `pkexec` cuando está disponible y conserva `doas` como fallback.
+
+Validación realizada:
+
+- `test-config: OK`
+- `test-installer: OK`
+- `git diff --check`: sin errores.
+- ISO v010 generada correctamente, 1,395,523,584 bytes.
+- SHA-256: `99fbb237b15a608263365cd73f1c227d43ae6dbf1745f4bde4a26a189a162379`.
+- El initramfs de la ISO mantiene compresión XZ y el overlay incluye gestor de arranque, protección de vista, perfil de energía, cursor y lanzadores.
+
+## 2026-09-10 — DexOS Desktop v012: GeoClue2 y credenciales del instalador
+
+- Se añadió `geoclue` 2.x (`geoclue` + `geoclue-lang` en Alpine) a Live y al sistema instalado.
+- Redshift vuelve a usar `location-provider=geoclue2` para ajuste automático por amanecer/atardecer; DexOS autoriza el cliente `redshift` mediante `/etc/geoclue/conf.d/90-dexos-redshift.conf`.
+- Protección de la vista permite elegir ajuste automático por GeoClue2 o temperatura manual, y tiene opción persistente «Iniciar protección automáticamente al entrar a DexOS». El autostart global sólo aplica Redshift cuando el usuario marcó esa opción.
+- El instalador marca por defecto «Usar la misma contraseña para root»; al desmarcarlo se habilitan los dos campos de contraseña root independiente.
+- El nombre de usuario acepta mayúsculas en la interfaz y se normaliza a minúsculas antes de enviarlo al backend; el backend vuelve a normalizar por seguridad antes de crear la cuenta.
+- ISO final: `DexOS-edge-x86_64-v012.iso`, 1,395,523,584 bytes, SHA-256 `b7a19d1fc34d647ea8dc60bc15b23065a7747e2716071fb516cf5037cc5fb73f`.
+- `test-config: OK`, `test-installer: OK`, checksum ISO verificado.
+
+## 2026-09-10 — DexOS Desktop v013: persistencia de volumen/brillo y autenticación GRUB
+
+Se corrigieron dos regresiones observadas después de instalar v012:
+
+- `dexos-audio-init` ya no ejecuta `wpctl set-volume ... 1.0` ni fuerza mute/unmute al iniciar sesión. WirePlumber mantiene su perfil `main` stateful y conserva volumen/mute del usuario. Se añadió `alsa-utils-openrc` y se habilitó el servicio `alsa`, que guarda `/var/lib/alsa/asound.state` al detenerse y lo restaura al arrancar para conservar también el mezclador ALSA de hardware. `alsactl init` queda limitado al primer arranque, cuando todavía no existe estado guardado.
+- Se añadió `dexos-backlight`, servicio OpenRC que guarda el brillo actual de cada dispositivo de `/sys/class/backlight` en `/var/lib/dexos/backlight` durante apagado/reinicio y restaura esos valores en el siguiente arranque, con límites según `max_brightness`.
+- El gestor gráfico `Orden de arranque` ahora solicita elevación mediante `pkexec` antes de crear su ventana. Una política PolicyKit de DexOS (`org.dexos.boot-manager.policy`) usa `auth_admin_keep` y permite el contexto gráfico X11. Una vez autenticado, toda la aplicación corre con privilegios y puede leer `/boot/grub/grub.cfg`, cambiar la entrada predeterminada y ejecutar `grub-update` sin el error previo de `sed: Permission denied`.
+- Se añadió `polkit-common` explícitamente para garantizar que `pkexec` esté disponible además del agente XFCE ya incluido.
+
+Validación v013:
+
+- ISO: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v013.iso`
+- Tamaño: ~1.3 GiB.
+- SHA-256: `8246cf4ae3eee41ccabbbf905161bec89d3bf0eb76c5cdcfdee8eec89cbde6c3`.
+- `sha256sum -c`: OK.
+- Overlay inspeccionado: servicios `alsa` y `dexos-backlight` habilitados; política PolicyKit y gestor GRUB presentes; no quedan comandos que fuercen volumen/mute.
+- XML de PolicyKit parseado correctamente.
+- `test-config: OK`, `test-installer: OK`, `git diff --check`: OK.

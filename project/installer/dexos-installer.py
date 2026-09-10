@@ -69,7 +69,7 @@ class Installer(Gtk.Assistant):
         self.probe = {'disks': [], 'partitions': [], 'oses': []}
         self.erase_items = []
         self.along_disk_items = []
-        self.along_free_items = []
+        self.along_root_items = []
         self.along_efi_items = []
         self.manual_root_items = []
         self.manual_efi_items = []
@@ -123,8 +123,8 @@ class Installer(Gtk.Assistant):
 
     def build_pages(self):
         b = self.box()
-        self.heading(b, 'Instalar DexOS', 'Instalación completa, junto a Windows o con particionado manual.')
-        t = Gtk.Label(label='DexOS puede conservar un Windows existente y reutilizar su partición EFI. En modo manual sólo se formatea la partición raíz que selecciones. Antes de instalar puedes abrir GParted para crear o ajustar particiones.')
+        self.heading(b, 'Instalar DexOS', 'Instalación completa o coexistencia segura con Windows/Linux.')
+        t = Gtk.Label(label='DexOS detecta Windows/Linux, particiones sin formato y espacio no asignado. En coexistencia sólo se modifica la raíz elegida; una EFI existente se reutiliza sin formatearla. Antes de instalar puedes abrir GParted para crear o ajustar particiones.')
         t.set_xalign(0); t.set_line_wrap(True); b.pack_start(t, False, False, 18)
         self.add_page(b, 'Bienvenida', Gtk.AssistantPageType.INTRO, True)
 
@@ -134,7 +134,7 @@ class Installer(Gtk.Assistant):
         self.detected = Gtk.Label(); self.detected.set_xalign(0); self.detected.set_line_wrap(True); b.pack_start(self.detected, False, False, 0)
 
         self.erase_radio = Gtk.RadioButton.new_with_label_from_widget(None, 'Borrar disco e instalar DexOS')
-        self.along_radio = Gtk.RadioButton.new_with_label_from_widget(self.erase_radio, 'Instalar junto a Windows')
+        self.along_radio = Gtk.RadioButton.new_with_label_from_widget(self.erase_radio, 'Coexistir con Windows / Linux')
         self.manual_radio = Gtk.RadioButton.new_with_label_from_widget(self.erase_radio, 'Particionado manual / dualboot')
         for w in (self.erase_radio, self.along_radio, self.manual_radio):
             w.connect('toggled', self.mode_changed); b.pack_start(w, False, False, 0)
@@ -152,22 +152,22 @@ class Installer(Gtk.Assistant):
         # Alongside panel.
         along = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10); along.set_border_width(10)
         self.along_disk_combo = Gtk.ComboBoxText(); self.along_disk_combo.connect('changed', self.along_disk_changed)
-        self.along_free_combo = Gtk.ComboBoxText(); self.along_free_combo.connect('changed', self.selection_changed)
+        self.along_root_combo = Gtk.ComboBoxText(); self.along_root_combo.connect('changed', self.selection_changed)
         self.along_efi_combo = Gtk.ComboBoxText(); self.along_efi_combo.connect('changed', self.selection_changed)
-        self.combo_row(along, 'Disco con Windows', self.along_disk_combo)
-        self.combo_row(along, 'Espacio sin asignar', self.along_free_combo)
-        self.combo_row(along, 'Partición EFI', self.along_efi_combo)
-        self.along_hint = Gtk.Label(label='DexOS sólo usa espacio sin asignar; no reduce NTFS automáticamente. Si no hay al menos 12 GiB libres, usa GParted primero.')
+        self.combo_row(along, 'Disco a conservar', self.along_disk_combo)
+        self.combo_row(along, 'Destino raíz DexOS', self.along_root_combo)
+        self.combo_row(along, 'Arranque EFI', self.along_efi_combo)
+        self.along_hint = Gtk.Label(label='Puedes usar una partición existente o espacio sin asignar. Sólo la raíz seleccionada se formatea; las demás particiones se conservan.')
         self.along_hint.set_xalign(0); self.along_hint.set_line_wrap(True); along.pack_start(self.along_hint, False, False, 0)
         self.mode_stack.add_named(along, 'alongside')
 
         # Manual panel.
         manual = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10); manual.set_border_width(10)
-        self.manual_root_combo = Gtk.ComboBoxText(); self.manual_root_combo.connect('changed', self.selection_changed)
+        self.manual_root_combo = Gtk.ComboBoxText(); self.manual_root_combo.connect('changed', self.manual_root_changed)
         self.manual_efi_combo = Gtk.ComboBoxText(); self.manual_efi_combo.connect('changed', self.selection_changed)
         self.combo_row(manual, 'Partición raíz /', self.manual_root_combo)
-        self.combo_row(manual, 'Partición EFI /boot/efi', self.manual_efi_combo)
-        mw = Gtk.Label(label='⚠ La partición raíz elegida se formateará en ext4. La partición EFI se conserva y DexOS crea EFI/DexOS sin borrar Microsoft u otros cargadores.')
+        self.combo_row(manual, 'Arranque EFI /boot/efi', self.manual_efi_combo)
+        mw = Gtk.Label(label='⚠ Sólo la partición raíz elegida se formateará en ext4. La EFI, si se usa, se conserva. En BIOS puede omitirse cuando el disco tiene un destino GRUB BIOS válido.')
         mw.set_xalign(0); mw.set_line_wrap(True); manual.pack_start(mw, False, False, 0)
         self.mode_stack.add_named(manual, 'manual')
         b.pack_start(self.mode_stack, True, True, 4)
@@ -190,10 +190,11 @@ class Installer(Gtk.Assistant):
         self.tz_page = self.add_page(b, 'Zona horaria', Gtk.AssistantPageType.CONTENT, True)
 
         # Account.
-        b = self.box(); self.heading(b, 'Usuario', 'El usuario principal tendrá sudo; root mantiene una contraseña independiente.')
+        b = self.box(); self.heading(b, 'Usuario', 'El usuario principal tendrá sudo. Por defecto root usa la misma contraseña.')
         grid = Gtk.Grid(column_spacing=12, row_spacing=12)
         self.hostname = Gtk.Entry(); self.hostname.set_text('dexos-pc')
         self.username = Gtk.Entry(); self.username.set_text('usuario')
+        self.username.set_placeholder_text('Puede usar mayúsculas; se guardará en minúsculas')
         self.password = Gtk.Entry(); self.password.set_visibility(False)
         self.password2 = Gtk.Entry(); self.password2.set_visibility(False)
         self.root_password = Gtk.Entry(); self.root_password.set_visibility(False)
@@ -201,12 +202,16 @@ class Installer(Gtk.Assistant):
         fields = [('Nombre del equipo', self.hostname), ('Usuario', self.username), ('Contraseña', self.password), ('Repetir contraseña', self.password2), ('Contraseña root', self.root_password), ('Repetir contraseña root', self.root_password2)]
         for r, (label, w) in enumerate(fields):
             l = Gtk.Label(label=label); l.set_xalign(1); grid.attach(l, 0, r, 1, 1); grid.attach(w, 1, r, 1, 1)
+        self.same_root_password = Gtk.CheckButton(label='Usar la misma contraseña para root')
+        self.same_root_password.set_active(True)
+        grid.attach(self.same_root_password, 1, len(fields), 1, 1)
         b.pack_start(grid, False, False, 8)
         self.account_error = Gtk.Label(); self.account_error.set_xalign(0); b.pack_start(self.account_error, False, False, 0)
         self.account_page = self.add_page(b, 'Usuario', Gtk.AssistantPageType.CONTENT, False)
         for e in [self.hostname, self.username, self.password, self.password2, self.root_password, self.root_password2]:
             e.connect('changed', self.validate_account)
-        self.validate_account()
+        self.same_root_password.connect('toggled', self.root_password_mode_changed)
+        self.root_password_mode_changed()
 
         # Confirm.
         b = self.box(); self.heading(b, 'Resumen', 'Revisa cuidadosamente qué se modificará.')
@@ -249,50 +254,114 @@ class Installer(Gtk.Assistant):
             self.erase_combo.append_text(f"{d['path']} — {d.get('model','Disco')} — {human_size(d.get('size'))}")
         if self.erase_items: self.erase_combo.set_active(0)
 
-        self.along_disk_combo.remove_all(); self.along_disk_items = [d for d in disks if d.get('windows')]
-        for d in self.along_disk_items:
-            free = max([r.get('size', 0) for r in d.get('free_regions') or []] or [0])
-            self.along_disk_combo.append_text(f"{d['path']} — Windows — libre máx. {human_size(free)}")
-        if self.along_disk_items: self.along_disk_combo.set_active(0)
-        else: self.populate_alongside(None)
+        self.along_disk_combo.remove_all()
+        self.along_disk_items = []
+        for d in disks:
+            roots = d.get('root_candidates') or []
+            frees = [r for r in (d.get('free_regions') or []) if int(r.get('size') or 0) >= MIN_ROOT]
+            boot_ok = bool(d.get('efi_partitions')) or bool(d.get('bios_capable'))
+            if not boot_ok or not (roots or frees):
+                continue
+            self.along_disk_items.append(d)
+            os_names = sorted(set(x.get('name', 'Sistema') for x in (d.get('oses') or [])))
+            if d.get('windows') and not any('windows' in n.lower() for n in os_names):
+                os_names.append('Windows')
+            existing = ', '.join(os_names) if os_names else 'particiones existentes'
+            self.along_disk_combo.append_text(f"{d['path']} — {existing} — {human_size(d.get('size'))}")
+        if self.along_disk_items:
+            self.along_disk_combo.set_active(0)
+        else:
+            self.populate_alongside(None)
 
         self.manual_root_combo.remove_all(); self.manual_root_items = []
-        self.manual_efi_combo.remove_all(); self.manual_efi_items = []
-        for p in self.probe.get('partitions') or []:
-            if p.get('efi') and not p.get('mounted'):
-                self.manual_efi_items.append(p)
-                suffix = ' — Windows EFI' if p.get('windows_efi') else ''
-                self.manual_efi_combo.append_text(f"{p['path']} — {human_size(p.get('size'))}{suffix}")
-            elif not p.get('mounted') and int(p.get('size') or 0) >= MIN_ROOT:
-                self.manual_root_items.append(p)
-                fs = p.get('fstype') or 'sin formato'
-                label = f" — {p.get('label')}" if p.get('label') else ''
-                self.manual_root_combo.append_text(f"{p['path']} — {human_size(p.get('size'))} — {fs}{label}")
-        if self.manual_root_items: self.manual_root_combo.set_active(0)
-        if self.manual_efi_items: self.manual_efi_combo.set_active(0)
+        pmap = {p.get('path'): p for p in (self.probe.get('partitions') or [])}
+        for disk in disks:
+            for path in disk.get('root_candidates') or []:
+                part = pmap.get(path)
+                if not part:
+                    continue
+                self.manual_root_items.append(part)
+                fs = part.get('fstype') or 'sin formato'
+                label = f" — {part.get('label')}" if part.get('label') else ''
+                self.manual_root_combo.append_text(f"{part['path']} — {human_size(part.get('size'))} — {fs}{label}")
+        if self.manual_root_items:
+            self.manual_root_combo.set_active(0)
+        else:
+            self.populate_manual_efi(None)
         self.update_partition_complete()
 
     def populate_alongside(self, disk):
-        self.along_free_combo.remove_all(); self.along_free_items = []
+        self.along_root_combo.remove_all(); self.along_root_items = []
         self.along_efi_combo.remove_all(); self.along_efi_items = []
         if not disk:
             self.update_partition_complete(); return
-        self.along_free_items = [r for r in (disk.get('free_regions') or []) if int(r.get('size') or 0) >= MIN_ALONGSIDE]
-        for r in self.along_free_items:
-            self.along_free_combo.append_text(f"{human_size(r.get('size'))} sin asignar")
-        if self.along_free_items: self.along_free_combo.set_active(0)
+
         pmap = {p.get('path'): p for p in disk.get('partitions') or []}
-        self.along_efi_items = [pmap[x] for x in disk.get('efi_partitions') or [] if x in pmap and not pmap[x].get('mounted')]
-        self.along_efi_items.sort(key=lambda p: (not p.get('windows_efi'), p.get('path')))
-        for p in self.along_efi_items:
+        for path in disk.get('root_candidates') or []:
+            p = pmap.get(path)
+            if not p:
+                continue
+            item = {'kind': 'partition', 'partition': p}
+            self.along_root_items.append(item)
+            fs = p.get('fstype') or 'sin formato'
+            label = f" — {p.get('label')}" if p.get('label') else ''
+            self.along_root_combo.append_text(f"{p['path']} — {human_size(p.get('size'))} — {fs}{label} — se FORMATEARÁ")
+        for r in disk.get('free_regions') or []:
+            if int(r.get('size') or 0) < MIN_ROOT:
+                continue
+            self.along_root_items.append({'kind': 'free', 'region': r})
+            self.along_root_combo.append_text(f"<no asignado> — {human_size(r.get('size'))} — se creará una partición nueva")
+        if self.along_root_items:
+            self.along_root_combo.set_active(0)
+
+        boot_mode = self.probe.get('boot_mode') or 'bios'
+        if boot_mode == 'bios' and disk.get('bios_capable'):
+            self.along_efi_items.append(None)
+            self.along_efi_combo.append_text('Ninguna — usar GRUB BIOS')
+        for path in disk.get('efi_partitions') or []:
+            p = pmap.get(path)
+            if not p or p.get('mounted'):
+                continue
+            self.along_efi_items.append(p)
             suffix = ' — Microsoft/Windows' if p.get('windows_efi') else ''
-            self.along_efi_combo.append_text(f"{p['path']} — {human_size(p.get('size'))}{suffix}")
-        if self.along_efi_items: self.along_efi_combo.set_active(0)
-        if disk.get('windows') and not self.along_free_items:
-            self.along_hint.set_text('Windows fue detectado, pero no hay al menos 12 GiB sin asignar. Abre GParted, reduce una partición de Windows y deja espacio SIN ASIGNAR; después pulsa “Actualizar detección”.')
+            self.along_efi_combo.append_text(f"{p['path']} — {human_size(p.get('size'))}{suffix} — se conserva")
+        if self.along_efi_items:
+            self.along_efi_combo.set_active(0)
+
+        if not self.along_root_items:
+            self.along_hint.set_text('No hay una partición elegible ni al menos 10 GiB sin asignar. Usa GParted y después pulsa “Actualizar detección”.')
+        elif boot_mode == 'uefi' and not self.along_efi_items:
+            self.along_hint.set_text('El Live arrancó en UEFI, pero este disco no tiene una ESP/FAT reutilizable sin montar.')
         else:
-            self.along_hint.set_text('DexOS sólo usa espacio sin asignar y conserva Windows/EFI. No se reduce NTFS automáticamente.')
+            self.along_hint.set_text('Se conservarán las demás particiones. Puedes elegir una raíz existente o un hueco no asignado; la EFI nunca se formatea en coexistencia.')
         self.update_partition_complete()
+
+    def populate_manual_efi(self, disk):
+        self.manual_efi_combo.remove_all(); self.manual_efi_items = []
+        if not disk:
+            self.update_partition_complete(); return
+        d = next((x for x in (self.probe.get('disks') or []) if x.get('path') == disk), None)
+        if not d:
+            self.update_partition_complete(); return
+        if (self.probe.get('boot_mode') or 'bios') == 'bios' and d.get('bios_capable'):
+            self.manual_efi_items.append(None)
+            self.manual_efi_combo.append_text('Ninguna — usar GRUB BIOS')
+        pmap = {p.get('path'): p for p in d.get('partitions') or []}
+        for path in d.get('efi_partitions') or []:
+            p = pmap.get(path)
+            if not p or p.get('mounted'):
+                continue
+            self.manual_efi_items.append(p)
+            suffix = ' — Microsoft/Windows' if p.get('windows_efi') else ''
+            self.manual_efi_combo.append_text(f"{p['path']} — {human_size(p.get('size'))}{suffix}")
+        if self.manual_efi_items:
+            self.manual_efi_combo.set_active(0)
+        self.update_partition_complete()
+
+    def manual_root_changed(self, *_):
+        i = self.manual_root_combo.get_active()
+        item = self.manual_root_items[i] if 0 <= i < len(self.manual_root_items) else None
+        self.populate_manual_efi(item.get('disk') if item else None)
 
     def along_disk_changed(self, *_):
         i = self.along_disk_combo.get_active()
@@ -315,7 +384,7 @@ class Installer(Gtk.Assistant):
         if not hasattr(self, 'partition_page'): return
         mode = self.mode()
         if mode == 'erase': ok = bool(self.erase_items) and self.erase_combo.get_active() >= 0
-        elif mode == 'alongside': ok = bool(self.along_disk_items and self.along_free_items and self.along_efi_items) and self.along_disk_combo.get_active() >= 0 and self.along_free_combo.get_active() >= 0 and self.along_efi_combo.get_active() >= 0
+        elif mode == 'alongside': ok = bool(self.along_disk_items and self.along_root_items and self.along_efi_items) and self.along_disk_combo.get_active() >= 0 and self.along_root_combo.get_active() >= 0 and self.along_efi_combo.get_active() >= 0
         else: ok = bool(self.manual_root_items and self.manual_efi_items) and self.manual_root_combo.get_active() >= 0 and self.manual_efi_combo.get_active() >= 0
         self.set_page_complete(self.partition_page, ok)
 
@@ -333,14 +402,32 @@ class Installer(Gtk.Assistant):
         except Exception as e:
             self.error_dialog('No se pudo abrir GParted', str(e))
 
+    def normalized_username(self):
+        return self.username.get_text().strip().lower()
+
+    def root_password_mode_changed(self, *_):
+        same = self.same_root_password.get_active()
+        self.root_password.set_sensitive(not same)
+        self.root_password2.set_sensitive(not same)
+        if same:
+            if self.root_password.get_text() != self.password.get_text(): self.root_password.set_text(self.password.get_text())
+            if self.root_password2.get_text() != self.password2.get_text(): self.root_password2.set_text(self.password2.get_text())
+        self.validate_account()
+
     def validate_account(self, *_):
         ok = True; msg = ''
+        username = self.normalized_username()
+        same_root = self.same_root_password.get_active()
+        if same_root:
+            if self.root_password.get_text() != self.password.get_text(): self.root_password.set_text(self.password.get_text())
+            if self.root_password2.get_text() != self.password2.get_text(): self.root_password2.set_text(self.password2.get_text())
         if not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?', self.hostname.get_text()): ok=False; msg='Nombre de equipo no válido.'
-        elif not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', self.username.get_text()) or self.username.get_text() == 'root': ok=False; msg='Usuario no válido.'
+        elif not re.fullmatch(r'[a-z_][a-z0-9_-]{0,30}', username) or username == 'root': ok=False; msg='Usuario no válido.'
         elif len(self.password.get_text()) < 8: ok=False; msg='La contraseña debe tener al menos 8 caracteres.'
         elif self.password.get_text() != self.password2.get_text(): ok=False; msg='Las contraseñas del usuario no coinciden.'
-        elif len(self.root_password.get_text()) < 8: ok=False; msg='La contraseña root debe tener al menos 8 caracteres.'
-        elif self.root_password.get_text() != self.root_password2.get_text(): ok=False; msg='Las contraseñas root no coinciden.'
+        elif not same_root and len(self.root_password.get_text()) < 8: ok=False; msg='La contraseña root debe tener al menos 8 caracteres.'
+        elif not same_root and self.root_password.get_text() != self.root_password2.get_text(): ok=False; msg='Las contraseñas root no coinciden.'
+        elif self.username.get_text().strip() != username: msg=f'El usuario se guardará como: {username}'
         self.account_error.set_text(msg)
         if hasattr(self, 'account_page'): self.set_page_complete(self.account_page, ok)
 
@@ -348,37 +435,52 @@ class Installer(Gtk.Assistant):
         return self.tz_combo.get_child().get_text().strip()
 
     def cfg(self):
+        same_root = self.same_root_password.get_active()
         base = {
-            'mode': self.mode(), 'hostname': self.hostname.get_text(), 'username': self.username.get_text(),
-            'password': self.password.get_text(), 'root_password': self.root_password.get_text(), 'timezone': self.timezone(),
+            'mode': self.mode(), 'hostname': self.hostname.get_text(), 'username': self.normalized_username(),
+            'password': self.password.get_text(), 'root_password': self.password.get_text() if same_root else self.root_password.get_text(), 'timezone': self.timezone(),
             'locale': os.environ.get('LANG', 'es_ES.UTF-8'),
         }
         if base['mode'] == 'erase':
             d = self.erase_items[self.erase_combo.get_active()]['path']; base.update(disk=d, confirm=f'BORRAR {d}')
         elif base['mode'] == 'alongside':
             d = self.along_disk_items[self.along_disk_combo.get_active()]['path']
-            r = self.along_free_items[self.along_free_combo.get_active()]
-            e = self.along_efi_items[self.along_efi_combo.get_active()]['path']
-            base.update(disk=d, efi_partition=e, free_start=r['start'], free_end=r['end'], confirm=f'INSTALAR JUNTO A {d}')
+            target = self.along_root_items[self.along_root_combo.get_active()]
+            efi_item = self.along_efi_items[self.along_efi_combo.get_active()]
+            efi = efi_item.get('path') if efi_item else ''
+            base.update(disk=d, efi_partition=efi, confirm=f'COEXISTIR {d}')
+            if target['kind'] == 'partition':
+                base['root_partition'] = target['partition']['path']
+            else:
+                r = target['region']
+                base.update(free_start_sector=r.get('start_sector', 0), free_sectors=r.get('sectors', 0))
         else:
             root = self.manual_root_items[self.manual_root_combo.get_active()]['path']
-            efi = self.manual_efi_items[self.manual_efi_combo.get_active()]['path']
+            efi_item = self.manual_efi_items[self.manual_efi_combo.get_active()]
+            efi = efi_item.get('path') if efi_item else ''
             base.update(root_partition=root, efi_partition=efi, confirm=f'FORMATEAR {root}')
         return base
 
     def on_prepare(self, assistant, page):
         if page is self.confirm_page:
             cfg = self.cfg(); self.confirm.set_active(False)
-            common = f"\n<b>Zona horaria:</b> {GLib.markup_escape_text(self.timezone())}\n<b>Equipo:</b> {GLib.markup_escape_text(self.hostname.get_text())}\n<b>Usuario:</b> {GLib.markup_escape_text(self.username.get_text())}"
+            common = f"\n<b>Zona horaria:</b> {GLib.markup_escape_text(self.timezone())}\n<b>Equipo:</b> {GLib.markup_escape_text(self.hostname.get_text())}\n<b>Usuario:</b> {GLib.markup_escape_text(cfg['username'])}"
             if cfg['mode'] == 'erase':
                 detail = f"<b>Modo:</b> borrar disco completo\n<b>Disco:</b> {cfg['disk']}\n\nSe eliminarán TODAS las particiones de ese disco."
                 self.confirm.set_label('Entiendo que el disco seleccionado será borrado completamente.')
             elif cfg['mode'] == 'alongside':
-                detail = f"<b>Modo:</b> instalar junto a Windows\n<b>Disco:</b> {cfg['disk']}\n<b>EFI conservada:</b> {cfg['efi_partition']}\n<b>Espacio libre:</b> {human_size(cfg['free_end']-cfg['free_start'])}\n\nWindows y la partición EFI se conservarán."
-                self.confirm.set_label('Entiendo que DexOS creará una partición nueva únicamente en el espacio sin asignar seleccionado.')
+                if cfg.get('root_partition'):
+                    target = f"partición existente {cfg['root_partition']} (se FORMATEARÁ)"
+                else:
+                    item = self.along_root_items[self.along_root_combo.get_active()]
+                    target = f"espacio no asignado {human_size(item['region'].get('size'))} (se creará raíz nueva)"
+                boot = cfg.get('efi_partition') or 'GRUB BIOS (sin ESP)'
+                detail = f"<b>Modo:</b> coexistencia con sistemas existentes\n<b>Disco:</b> {cfg['disk']}\n<b>Raíz DexOS:</b> {target}\n<b>Arranque:</b> {boot}\n\nLas demás particiones y cargadores se conservarán."
+                self.confirm.set_label('Entiendo que sólo la raíz DexOS seleccionada se formateará o creará y que las demás particiones se conservarán.')
             else:
-                detail = f"<b>Modo:</b> particionado manual / dualboot\n<b>Raíz a FORMATEAR:</b> {cfg['root_partition']}\n<b>EFI a conservar:</b> {cfg['efi_partition']}"
-                self.confirm.set_label('Entiendo que la partición raíz seleccionada será formateada y que la EFI se conservará.')
+                boot = cfg.get('efi_partition') or 'GRUB BIOS (sin ESP)'
+                detail = f"<b>Modo:</b> particionado manual / dualboot\n<b>Raíz a FORMATEAR:</b> {cfg['root_partition']}\n<b>Arranque:</b> {boot}"
+                self.confirm.set_label('Entiendo que sólo la partición raíz seleccionada será formateada y que la EFI, si se usa, se conservará.')
             self.summary.set_markup(detail + common + '\n\nGRUB usará el tema Argon y buscará otros sistemas operativos.')
         if page is self.progress_page and not self.installing:
             self.installing = True; threading.Thread(target=self.install_thread, daemon=True).start()

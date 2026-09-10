@@ -26,7 +26,9 @@ fi
 [ -n "$WALLPAPER_ASSET" ] || { echo "Falta recurso visual de wallpaper exacto" >&2; exit 1; }
 ARGON_ASSET="$BRAND_ASSETS/argon-grub-theme"
 [ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon precompilado" >&2; exit 1; }
-for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh dexos-audio-init dexos-apk-refresh dexos-language.py dexos-trust-launchers dexos-video-init; do
+CURSOR_ASSET="$BRAND_ASSETS/dexos-windows-cursor"
+[ -f "$CURSOR_ASSET/index.theme" ] && [ -f "$CURSOR_ASSET/cursors/left_ptr" ] || { echo "Falta tema de cursor DexOS-Windows" >&2; exit 1; }
+for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh dexos-audio-init dexos-apk-refresh dexos-language.py dexos-trust-launchers dexos-video-init dexos-prepare-desktop dexos-boot-manager.py dexos-eye-protection.py dexos-power-init dexos-power-apply dexos-backlight-state org.dexos.boot-manager.policy boot-order grub-update grub-other-os 05_dexos_theme 09_dexos_linux; do
     [ -f "$SYSTEM_ASSETS/$f" ] || { echo "Falta recurso del sistema: $f" >&2; exit 1; }
 done
 tmp="$(mktemp -d)"
@@ -85,6 +87,7 @@ udev-init-scripts-openrc
 elogind
 elogind-openrc
 polkit-elogind
+polkit-common
 xorg-server
 xinit
 xsetroot
@@ -130,6 +133,10 @@ adw-gtk3
 adwaita-xfce-icon-theme
 breeze-cursors
 xfce-polkit
+redshift
+geoclue
+geoclue-lang
+power-profiles-daemon
 musl-locales
 musl-locales-lang
 gettext-lang
@@ -204,6 +211,7 @@ pipewire-pulse
 pipewire-alsa
 wireplumber
 alsa-utils
+alsa-utils-openrc
 alsa-ucm-conf
 sof-firmware
 pavucontrol
@@ -253,6 +261,22 @@ makefile root:root 0644 "$tmp/etc/network/interfaces" <<'EOF_NET'
 auto lo
 iface lo inet loopback
 EOF_NET
+makefile root:root 0644 "$tmp/etc/redshift.conf" <<'EOF_REDSHIFT'
+[redshift]
+adjustment-method=randr
+location-provider=geoclue2
+temp-day=6500
+temp-night=4500
+transition=0
+EOF_REDSHIFT
+
+mkdir -p "$tmp/etc/geoclue/conf.d"
+makefile root:root 0644 "$tmp/etc/geoclue/conf.d/90-dexos-redshift.conf" <<'EOF_GEOCLUE_REDSHIFT'
+[redshift]
+allowed=true
+system=false
+users=
+EOF_GEOCLUE_REDSHIFT
 makefile root:root 0644 "$tmp/etc/NetworkManager/NetworkManager.conf" <<'EOF_NM'
 [main]
 dhcp=internal
@@ -295,8 +319,8 @@ makefile root:root 0644 "$tmp/etc/lightdm/lightdm-gtk-greeter.conf" <<'EOF_GREET
 background=/usr/share/dexos/dexos-wallpaper.png
 theme-name=adw-gtk3-dark
 icon-theme-name=Adwaita-Xfce
-cursor-theme-name=Breeze
-cursor-theme-size=24
+cursor-theme-name=DexOS-Windows
+cursor-theme-size=32
 font-name=DejaVu Sans 11
 clock-format=%A %d de %B  %H:%M
 indicators=~host;~spacer;~clock;~spacer;~session;~a11y;~power
@@ -309,6 +333,12 @@ install -m 0644 "$BRAND_ASSETS/dexos-boot.ppm" "$tmp/usr/share/dexos/boot.ppm"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/dexos/dexos-wallpaper.png"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/backgrounds/xfce/DexOS.png"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/xfce4/backdrops/DexOS.png"
+mkdir -p "$tmp/usr/share/icons/DexOS-Windows"
+cp -a "$CURSOR_ASSET/." "$tmp/usr/share/icons/DexOS-Windows/"
+mkdir -p "$tmp/usr/share/icons"
+ln -sfn adwaita-xfce "$tmp/usr/share/icons/Adwaita-Xfce"
+mkdir -p "$tmp/usr/share/icons/adwaita-xfce/scalable/categories"
+ln -sfn applications-other.svg "$tmp/usr/share/icons/adwaita-xfce/scalable/categories/applications.svg"
 install -m 0755 "$SYSTEM_ASSETS/dexos-session-splash.py" "$tmp/usr/local/bin/dexos-session-splash"
 install -m 0755 "$SYSTEM_ASSETS/dexos-session" "$tmp/usr/local/bin/dexos-session"
 mkdir -p "$tmp/usr/share/dexos/installed"
@@ -328,6 +358,29 @@ install -m 0755 "$SYSTEM_ASSETS/dexos-language.py" "$tmp/usr/share/dexos/install
 install -m 0755 "$SYSTEM_ASSETS/dexos-trust-launchers" "$tmp/usr/local/bin/dexos-trust-launchers"
 install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/local/bin/dexos-video-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-video-init" "$tmp/usr/share/dexos/installed/dexos-video-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-prepare-desktop" "$tmp/usr/local/bin/dexos-prepare-desktop"
+install -m 0755 "$SYSTEM_ASSETS/dexos-prepare-desktop" "$tmp/usr/share/dexos/installed/dexos-prepare-desktop"
+install -m 0755 "$SYSTEM_ASSETS/dexos-boot-manager.py" "$tmp/usr/local/bin/dexos-boot-manager"
+install -m 0755 "$SYSTEM_ASSETS/dexos-boot-manager.py" "$tmp/usr/share/dexos/installed/dexos-boot-manager.py"
+install -m 0755 "$SYSTEM_ASSETS/dexos-eye-protection.py" "$tmp/usr/local/bin/dexos-eye-protection"
+install -m 0755 "$SYSTEM_ASSETS/dexos-eye-protection.py" "$tmp/usr/share/dexos/installed/dexos-eye-protection.py"
+install -m 0755 "$SYSTEM_ASSETS/dexos-power-init" "$tmp/etc/init.d/dexos-power"
+install -m 0755 "$SYSTEM_ASSETS/dexos-power-init" "$tmp/usr/share/dexos/installed/dexos-power-init"
+install -m 0755 "$SYSTEM_ASSETS/dexos-power-apply" "$tmp/usr/local/sbin/dexos-power-apply"
+install -m 0755 "$SYSTEM_ASSETS/dexos-power-apply" "$tmp/usr/share/dexos/installed/dexos-power-apply"
+install -m 0755 "$SYSTEM_ASSETS/dexos-backlight-state" "$tmp/etc/init.d/dexos-backlight"
+install -m 0755 "$SYSTEM_ASSETS/dexos-backlight-state" "$tmp/usr/share/dexos/installed/dexos-backlight-state"
+mkdir -p "$tmp/usr/share/polkit-1/actions"
+install -m 0644 "$SYSTEM_ASSETS/org.dexos.boot-manager.policy" "$tmp/usr/share/polkit-1/actions/org.dexos.boot-manager.policy"
+install -m 0644 "$SYSTEM_ASSETS/org.dexos.boot-manager.policy" "$tmp/usr/share/dexos/installed/org.dexos.boot-manager.policy"
+install -m 0755 "$SYSTEM_ASSETS/boot-order" "$tmp/usr/share/dexos/installed/boot-order"
+install -m 0755 "$SYSTEM_ASSETS/grub-update" "$tmp/usr/share/dexos/installed/grub-update"
+install -m 0755 "$SYSTEM_ASSETS/grub-other-os" "$tmp/usr/share/dexos/installed/grub-other-os"
+install -m 0755 "$SYSTEM_ASSETS/05_dexos_theme" "$tmp/usr/share/dexos/installed/05_dexos_theme"
+install -m 0755 "$SYSTEM_ASSETS/09_dexos_linux" "$tmp/usr/share/dexos/installed/09_dexos_linux"
+# XFCE 4.20 falls back to xfce-x.svg on a fresh channel. Overlay that exact
+# path with DexOS so even an internal first-run reset cannot show XFCE artwork.
+ln -sf /usr/share/dexos/dexos-wallpaper.png "$tmp/usr/share/backgrounds/xfce/xfce-x.svg"
 install -m 0755 "$SCRIPT_DIR/patch-initramfs-init.py" "$tmp/usr/share/dexos/installed/patch-initramfs-init.py"
 makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
 [Desktop Entry]
@@ -383,7 +436,7 @@ EOF_LIBINPUT
 mkdir -p "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml"
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml" <<'EOF_XSET'
 <?xml version="1.0" encoding="UTF-8"?>
-<channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="adw-gtk3-dark"/><property name="IconThemeName" type="string" value="Adwaita-Xfce"/><property name="CursorThemeName" type="string" value="Breeze"/><property name="CursorThemeSize" type="int" value="24"/></property><property name="Gtk" type="empty"><property name="FontName" type="string" value="DejaVu Sans 10"/></property></channel>
+<channel name="xsettings" version="1.0"><property name="Net" type="empty"><property name="ThemeName" type="string" value="adw-gtk3-dark"/><property name="IconThemeName" type="string" value="Adwaita-Xfce"/></property><property name="Gtk" type="empty"><property name="FontName" type="string" value="DejaVu Sans 10"/><property name="CursorThemeName" type="string" value="DexOS-Windows"/><property name="CursorThemeSize" type="int" value="32"/></property></channel>
 EOF_XSET
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml" <<'EOF_XFWM'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -512,10 +565,10 @@ set_backdrop "/backdrop/screen0/monitor0/workspace0"
 
 xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
 xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
-xfconf-query -c xsettings -p /Gtk/CursorThemeName -s Breeze 2>/dev/null || \
-  xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s Breeze 2>/dev/null || true
-xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 24 2>/dev/null || \
-  xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 24 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeName -s DexOS-Windows 2>/dev/null || \
+  xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s DexOS-Windows 2>/dev/null || true
+xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 32 2>/dev/null || \
+  xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 32 2>/dev/null || true
 
 # XFCE's first-run migration may write defaults a moment after xfdesktop starts.
 # Re-apply after that migration and force the desktop process to redraw.
@@ -577,6 +630,43 @@ Terminal=false
 NoDisplay=true
 X-GNOME-Autostart-Delay=1
 EOF_VIDEO_AUTOSTART
+
+# Windows-like system utilities exposed as regular desktop applications.
+mkdir -p "$tmp/usr/share/applications" "$tmp/etc/skel/Desktop"
+makefile root:root 0644 "$tmp/usr/share/applications/dexos-boot-manager.desktop" <<'EOF_BOOT_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Orden de arranque
+Comment=Elegir sistema predeterminado y escanear discos para GRUB
+Exec=/usr/local/bin/dexos-boot-manager
+Icon=drive-harddisk
+Terminal=false
+StartupNotify=true
+Categories=Settings;System;
+EOF_BOOT_DESKTOP
+makefile root:root 0644 "$tmp/usr/share/applications/dexos-eye-protection.desktop" <<'EOF_EYE_DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=Protección de la vista
+Comment=Reducir la luz azul con una temperatura de color cálida
+Exec=/usr/local/bin/dexos-eye-protection
+Icon=video-display
+Terminal=false
+StartupNotify=true
+Categories=Settings;Utility;
+EOF_EYE_DESKTOP
+cp "$tmp/usr/share/applications/dexos-boot-manager.desktop" "$tmp/etc/skel/Desktop/Orden-de-arranque.desktop"
+chmod 0755 "$tmp/etc/skel/Desktop/Orden-de-arranque.desktop"
+makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-eye-protection.desktop" <<'EOF_EYE_AUTOSTART'
+[Desktop Entry]
+Type=Application
+Name=DexOS Eye Protection
+Exec=/usr/local/bin/dexos-eye-protection --startup
+OnlyShowIn=XFCE;
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-Delay=2
+EOF_EYE_AUTOSTART
 
 makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml" <<'EOF_PWR'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -823,6 +913,9 @@ rc_add bootmisc boot
 rc_add syslog boot
 rc_add dexos-splash-keys boot
 rc_add dbus default
+rc_add alsa default
+rc_add dexos-backlight default
+rc_add dexos-power default
 rc_add elogind default
 rc_add dexos-wifi-init boot
 rc_add networkmanager default

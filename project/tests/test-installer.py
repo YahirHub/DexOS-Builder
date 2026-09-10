@@ -11,6 +11,7 @@ assert m.partitions('/dev/nvme0n1') == ('/dev/nvme0n1p1','/dev/nvme0n1p2','/dev/
 assert m.HOST_RE.fullmatch('dexos-pc') and not m.HOST_RE.fullmatch('-bad')
 assert m.USER_RE.fullmatch('usuario_1') and not m.USER_RE.fullmatch('Root')
 assert m.MIN_ALONGSIDE >= 12 * 1024**3
+backend_text = path.read_text()
 
 # write() must unlink symlinks rather than following them outside the target.
 with tempfile.TemporaryDirectory() as td:
@@ -27,20 +28,59 @@ with tempfile.TemporaryDirectory() as td:
     dump = subprocess.check_output(['sfdisk','-d',img], text=True).lower()
     assert m.BIOS_GUID.lower() in dump and m.ESP_GUID.lower() in dump and m.LINUX_GUID.lower() in dump
 
-# Parted free-space parser used by "alongside".
+# sfdisk free-space parser used by coexistence. It preserves exact sector coordinates.
 orig_output = m.output
-m.output = lambda cmd: '''BYT;\n/dev/sda:100000000000B:scsi:512:512:gpt:Disk:;\n1:1048576B:50000000000B:49998951425B:ntfs:Windows:msftdata;\n1:50000000001B:99999999999B:49999999999B:free;'''
+def fake_output(cmd):
+    if cmd[:2] == ['blockdev', '--getss']:
+        return '512'
+    if cmd[:2] == ['sfdisk', '--list-free']:
+        return '  2048  100000000  99997953  47.7G\n'
+    raise AssertionError(cmd)
+m.output = fake_output
 regions = m.free_regions('/dev/sda')
 m.output = orig_output
-assert len(regions) == 1 and regions[0]['size'] > 40 * 1024**3
+assert len(regions) == 1
+assert regions[0]['start_sector'] == 2048 and regions[0]['sectors'] == 99997953
+assert regions[0]['size'] > 40 * 1024**3
 
-# GRUB entries use stable UUIDs, splash and storage modules.
-sample = '''menuentry "DexOS" {\n    linux /boot/vmlinuz-lts root=/dev/vda3 quiet modules=sd-mod,ext4\n    initrd /boot/initramfs-lts\n}\n'''
-fixed = m.rewrite_grub_root(sample, '1111-2222')
-assert 'root=/dev/vda3' not in fixed
-assert 'root=UUID=1111-2222' in fixed
-assert 'quiet splash' in fixed
-assert 'modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4' in fixed
+# Root eligibility rejects boot/reserved/mounted/small partitions and accepts unformatted roots.
+orig_node, orig_parent = m.node_by_path, m.parent_disk
+cases = {
+    '/dev/sda1': {'path':'/dev/sda1','type':'part','ro':0,'size':20*1024**3,'fstype':'','parttype':m.LINUX_GUID,'mountpoints':[None]},
+    '/dev/sda2': {'path':'/dev/sda2','type':'part','ro':0,'size':512*1024**2,'fstype':'vfat','parttype':m.ESP_GUID,'mountpoints':[None]},
+    '/dev/sda3': {'path':'/dev/sda3','type':'part','ro':0,'size':128*1024**2,'fstype':'','parttype':m.MSR_GUID,'mountpoints':[None]},
+    '/dev/sda4': {'path':'/dev/sda4','type':'part','ro':0,'size':20*1024**3,'fstype':'ext4','parttype':m.LINUX_GUID,'mountpoints':['/mnt']},
+}
+m.node_by_path = lambda path: cases.get(path)
+m.parent_disk = lambda path: '/dev/sda'
+assert m.root_partition_reason('/dev/sda1','/dev/sda') == 'ok'
+assert m.root_partition_reason('/dev/sda2','/dev/sda') == 'particion-efi'
+assert m.root_partition_reason('/dev/sda3','/dev/sda') == 'reservada-windows'
+assert m.root_partition_reason('/dev/sda4','/dev/sda') == 'montada'
+m.node_by_path, m.parent_disk = orig_node, orig_parent
+
+# BIOS support: MBR works directly; GPT requires a BIOS Boot partition.
+orig_pt, orig_tree = m.disk_pttype, m.lsblk_tree
+m.disk_pttype = lambda disk: 'dos'
+assert m.disk_supports_bios('/dev/sda')
+m.disk_pttype = lambda disk: 'gpt'
+m.lsblk_tree = lambda disk=None: [{'path':'/dev/sda','type':'disk','children':[{'path':'/dev/sda1','type':'part','parttype':m.BIOS_GUID}]}]
+assert m.disk_supports_bios('/dev/sda')
+m.lsblk_tree = lambda disk=None: [{'path':'/dev/sda','type':'disk','children':[{'path':'/dev/sda1','type':'part','parttype':m.LINUX_GUID}]}]
+assert not m.disk_supports_bios('/dev/sda')
+m.disk_pttype, m.lsblk_tree = orig_pt, orig_tree
+
+# Coexistence creates roots with sfdisk --append and never rewrites the whole table.
+create_root = inspect.getsource(m.create_root_from_free)
+assert "'sfdisk', '--append', '--wipe', 'never', '--wipe-partitions', 'never'" in create_root
+assert 'parted' not in create_root
+
+# DexOS owns only its own GRUB entry; foreign Linux entries are never rewritten.
+primary = (ROOT/'project/installed/09_dexos_linux').read_text()
+assert 'root=UUID=$root_uuid' in primary
+assert 'quiet splash' in primary
+assert 'modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4' in primary
+assert 'def rewrite_grub_root' not in backend_text
 
 # Installed initramfs embeds the DexOS splash fallback.
 mk_candidates = sorted(list((ROOT/'cache').rglob('mkinitfs-*.apk')) + list((ROOT/'alpine-root').rglob('mkinitfs-*.apk')))
@@ -50,21 +90,23 @@ with tarfile.open(mk_candidates[-1], 'r:gz') as tf:
 patched = m.patch_installed_initramfs(init_text)
 assert '/usr/share/dexos/boot.ppm' in patched and patched.count('/usr/share/dexos/boot.ppm') == 1
 
-backend_text = path.read_text()
 # Three safe installation paths.
 assert "mode == 'erase'" in backend_text
 assert "mode == 'alongside'" in backend_text
 assert "mode == 'manual'" in backend_text
-assert 'INSTALAR JUNTO A' in backend_text
+assert 'COEXISTIR {disk}' in backend_text
 assert 'FORMATEAR {root}' in backend_text
+assert "sfdisk', '--list-free'" in backend_text
 assert 'free_regions(disk)' in backend_text
 
-# Alongside/manual preserve EFI: they may format root but never mkfs.vfat.
+# Alongside/manual preserve EFI: root formatting is centralized and EFI is never formatted.
 along = inspect.getsource(m.prepare_alongside)
 manual = inspect.getsource(m.prepare_manual)
-assert 'mkfs.ext4' in along and 'mkfs.vfat' not in along
-assert 'mkfs.ext4' in manual and 'mkfs.vfat' not in manual
-assert "'preserve_efi': True" in along and "'preserve_efi': True" in manual
+format_root = inspect.getsource(m.format_root_ext4)
+assert 'format_root_ext4' in along and 'mkfs.vfat' not in along
+assert 'format_root_ext4' in manual and 'mkfs.vfat' not in manual
+assert "wipefs', '-a'" in format_root and "mkfs.ext4" in format_root
+assert "'preserve_efi': bool(efi)" in along and "'preserve_efi': bool(efi)" in manual
 
 # GRUB dualboot + Argon contract.
 bootloader = inspect.getsource(m.install_bootloader)
@@ -72,6 +114,8 @@ assert 'GRUB_DISABLE_OS_PROBER=false' in bootloader
 assert "'/usr/bin/os-prober'" in bootloader
 assert 'install_argon_theme()' in bootloader
 assert "if not preserve_efi:" in bootloader
+assert 'bios_ok = disk_supports_bios(boot_disk)' in bootloader
+assert 'if efi_partition:' in bootloader
 assert 'EFI/BOOT/BOOTX64.EFI' in bootloader
 assert 'GRUB_THEME=\"/boot/grub/themes/argon/theme.txt\"' in bootloader
 
@@ -95,10 +139,20 @@ packages = (ROOT/'project/installer/installer-packages.txt').read_text().split()
 for pkg in ['gparted','os-prober','ntfs-3g','ntfs-3g-progs','alsa-ucm-conf','sof-firmware']:
     assert pkg in packages
 assert 'linux-firmware' not in packages, 'full linux-firmware metapackage would bloat ISO'
+assert 'geoclue' in packages and 'geoclue-lang' in packages
+assert "TARGET / 'etc/geoclue/conf.d/90-dexos-redshift.conf'" in backend_text
+assert "cfg['username'] = cfg['username'].strip().lower()" in backend_text
 
 ui = (ROOT/'project/installer/dexos-installer.py').read_text()
-for token in ['Instalar junto a Windows','Particionado manual / dualboot','Abrir GParted','--probe']:
+assert 'Usar la misma contraseña para root' in ui
+assert 'self.same_root_password.set_active(True)' in ui
+assert 'self.normalized_username()' in ui
+for token in ['Coexistir con Windows / Linux','Particionado manual / dualboot','Abrir GParted','--probe']:
     assert token in ui
+assert '<no asignado>' in ui
+assert 'se FORMATEARÁ' in ui
+assert 'Ninguna — usar GRUB BIOS' in ui
+assert 'COEXISTIR {d}' in ui
 
 
 assert "GRUB_DISABLE_OS_PROBER=false" in backend_text
@@ -107,7 +161,7 @@ assert "chroot(['/usr/bin/os-prober']" in backend_text
 assert "def prepare_alongside" in backend_text
 assert "def prepare_manual" in backend_text
 assert "gparted" in ui
-assert "Instalar junto a Windows" in ui
+assert "Coexistir con Windows / Linux" in ui
 assert "Particionado manual / dualboot" in ui
 for pkg in ['os-prober','ntfs-3g','alsa-ucm-conf','sof-firmware']:
     assert pkg in packages
@@ -147,5 +201,74 @@ assert "/usr/share/dexos/wallpaper'" not in backend_text
 assert "ata base ide scsi usb virtio ext4 nvme kms dexosroot" in backend_text
 for path in ['/usr/share/dexos/boot.ppm','/sbin/fbsplash','/usr/bin/setsid','/usr/bin/chvt','/bin/stty']:
     assert path in backend_text
+
+
+# v008 installed sessions use the same deterministic pre-XFCE wallpaper helper.
+assert "dexos-prepare-desktop" in backend_text
+assert "TARGET / 'usr/local/sbin/boot-order'" in backend_text
+assert "TARGET / 'usr/local/sbin/grub-update'" in backend_text
+boot_order = (ROOT/'project/installed/boot-order').read_text()
+grub_update = (ROOT/'project/installed/grub-update').read_text()
+assert 'grub-set-default' in boot_order and 'saved_entry' in boot_order
+assert 'grub-script-check' in grub_update and 'grub-mkconfig' in grub_update
+theme_gen = (ROOT/'project/installed/05_dexos_theme').read_text()
+primary_gen = (ROOT/'project/installed/09_dexos_linux').read_text()
+fallback_gen = (ROOT/'project/installed/grub-other-os').read_text()
+assert 'gfxmenu' in theme_gen and 'themes/argon/theme.txt' in theme_gen
+assert "menuentry 'DexOS'" in primary_gen and 'root=UUID=$root_uuid' in primary_gen
+assert 'quiet splash' in primary_gen and 'vt.global_cursor_default=0' in primary_gen
+assert 'os-prober is still the primary detector' in fallback_gen
+assert 'emit_efi_loader' in fallback_gen and 'emit_linux_kernel' in fallback_gen and 'emit_windows_bios' in fallback_gen
+assert "TARGET / 'etc/grub.d/05_dexos_theme'" in backend_text
+assert "TARGET / 'etc/grub.d/09_dexos_linux'" in backend_text
+assert "TARGET / 'etc/grub.d/31_dexos_other_os'" in backend_text
+assert "update_grub.symlink_to('grub-update')" in backend_text
+assert "stock in ('10_linux', '20_linux_xen')" in backend_text
+# Coexistence safety: generating GRUB must never rewrite Linux lines belonging to another OS.
+boot_source = inspect.getsource(m.install_bootloader)
+assert 'rewrite_grub_root(' not in boot_source
+assert "'/usr/local/sbin/grub-update'" in boot_source
+assert "'/usr/sbin/grub-set-default', '0'" in boot_source
+assert "xfce-x.svg" in backend_text
+assert "symlink_to('/usr/share/dexos/dexos-wallpaper.png')" in backend_text
+
+
+# v010 installed desktop utilities and power/cursor integration.
+assert "TARGET / 'usr/local/bin/dexos-boot-manager'" in backend_text
+assert "TARGET / 'usr/local/bin/dexos-eye-protection'" in backend_text
+assert "TARGET / 'etc/init.d/dexos-power'" in backend_text
+assert "TARGET / 'etc/redshift.conf'" in backend_text
+assert "TARGET / 'usr/local/sbin/dexos-power-apply'" in backend_text
+assert "TARGET / 'usr/share/icons/DexOS-Windows'" in backend_text
+assert "cursor-theme-name=DexOS-Windows" in backend_text
+assert "TARGET / 'etc/skel/Desktop'" in backend_text
+assert "('bluetooth','default'), ('alsa','default'), ('dexos-backlight','default'), ('dexos-power','default'), ('lightdm','default')" in backend_text
+boot_gui = (ROOT/'project/installed/dexos-boot-manager.py').read_text()
+assert 'Escanear discos y actualizar GRUB' in boot_gui
+assert "self.run_async([GRUB_UPDATE], self.after_scan)" in boot_gui
+assert "BOOT_ORDER, '--set'" in boot_gui
+eye_gui = (ROOT/'project/installed/dexos-eye-protection.py').read_text()
+assert "['redshift', '-m', 'randr', '-l', 'geoclue2'" in eye_gui
+assert "manual:lat=0:lon=0" in eye_gui
+power_apply = (ROOT/'project/installed/dexos-power-apply').read_text()
+assert 'powerprofilesctl set balanced' in power_apply
+assert 'energy_performance_preference' in power_apply
+assert 'scaling_governor' in power_apply
+
+
+# v013 persistence and privileged boot manager.
+assert 'alsa-utils-openrc' in packages
+assert "TARGET / 'etc/init.d/dexos-backlight'" in backend_text
+assert "TARGET / 'usr/share/polkit-1/actions/org.dexos.boot-manager.policy'" in backend_text
+audio_init = (ROOT/'project/installed/dexos-audio-init').read_text()
+assert 'wpctl set-volume' not in audio_init and 'wpctl set-mute' not in audio_init
+assert '/var/lib/alsa/asound.state' in audio_init
+backlight = (ROOT/'project/installed/dexos-backlight-state').read_text()
+assert 'save_backlights' in backlight and 'restore_backlights' in backlight
+assert '/var/lib/dexos/backlight' in backlight
+policy = (ROOT/'project/installed/org.dexos.boot-manager.policy').read_text()
+assert 'auth_admin_keep' in policy and 'org.freedesktop.policykit.exec.allow_gui' in policy
+assert 'ensure_admin()' in boot_gui and "os.execv(pkexec" in boot_gui
+assert 'privileged(' not in boot_gui
 
 print('test-installer: OK')

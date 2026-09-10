@@ -1,0 +1,37 @@
+#!/bin/sh
+set -u
+
+# Ask power-profiles-daemon for its neutral profile when available. This keeps
+# vendor platform_profile and CPU policy aligned without forcing battery saver.
+if command -v powerprofilesctl >/dev/null 2>&1; then
+    timeout 8 powerprofilesctl set balanced >/dev/null 2>&1 || true
+fi
+
+for policy in /sys/devices/system/cpu/cpufreq/policy*; do
+    [ -d "$policy" ] || continue
+    if [ -w "$policy/energy_performance_preference" ]; then
+        choices=$(cat "$policy/energy_performance_available_preferences" 2>/dev/null || true)
+        case " $choices " in
+            *' balance_power '*) printf '%s\n' balance_power > "$policy/energy_performance_preference" 2>/dev/null || true ;;
+            *' balance_performance '*) printf '%s\n' balance_performance > "$policy/energy_performance_preference" 2>/dev/null || true ;;
+        esac
+    fi
+    if [ -w "$policy/scaling_governor" ]; then
+        governors=$(cat "$policy/scaling_available_governors" 2>/dev/null || true)
+        case " $governors " in
+            *' schedutil '*) printf '%s\n' schedutil > "$policy/scaling_governor" 2>/dev/null || true ;;
+            *' powersave '*) printf '%s\n' powersave > "$policy/scaling_governor" 2>/dev/null || true ;;
+        esac
+    fi
+done
+
+# If the firmware exposes a platform profile, use balanced instead of
+# performance. Ignore unsupported hardware rather than failing boot.
+if [ -w /sys/firmware/acpi/platform_profile ]; then
+    choices=$(cat /sys/firmware/acpi/platform_profile_choices 2>/dev/null || true)
+    case " $choices " in
+        *' balanced '*) printf '%s\n' balanced > /sys/firmware/acpi/platform_profile 2>/dev/null || true ;;
+        *' low-power '*) : ;; # never force low-power unless the user requests it
+    esac
+fi
+exit 0

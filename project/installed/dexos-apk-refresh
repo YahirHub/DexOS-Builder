@@ -1,27 +1,41 @@
 #!/sbin/openrc-run
 name="DexOS APK repositories"
-description="Refresh Alpine package indexes after networking becomes available"
+description="Refresh Alpine package indexes periodically after networking is available"
 LOG=/var/log/dexos-apk.log
+STAMP=/var/lib/dexos/apk-refresh.stamp
+INTERVAL=86400
 
 depend() {
     need networkmanager
     after networkmanager dexos-wifi-refresh
 }
 
+fresh_enough() {
+    [ -f "$STAMP" ] || return 1
+    now=$(date +%s 2>/dev/null || echo 0)
+    then=$(cat "$STAMP" 2>/dev/null || echo 0)
+    [ "$now" -gt 0 ] && [ "$then" -gt 0 ] && [ $((now - then)) -lt "$INTERVAL" ]
+}
+
 start() {
-    ebegin "Preparing APK repositories"
+    if fresh_enough; then
+        ebegin "APK indexes are already fresh"
+        eend 0
+        return 0
+    fi
+    ebegin "Scheduling APK repository refresh"
     (
-        # Do not delay the desktop. Wait briefly for NetworkManager connectivity.
         i=0
-        while [ "$i" -lt 20 ]; do
-            if nmcli -t -f STATE general 2>/dev/null | grep -qx 'connected'; then
-                break
-            fi
-            sleep 1
+        while [ "$i" -lt 30 ]; do
+            if nmcli -t -f STATE general 2>/dev/null | grep -qx 'connected'; then break; fi
+            sleep 2
             i=$((i + 1))
         done
+        mkdir -p /var/lib/dexos
         echo "--- DexOS APK refresh $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || true) ---" > "$LOG"
-        apk update >> "$LOG" 2>&1 || true
+        if nice -n 15 apk update >> "$LOG" 2>&1; then
+            date +%s > "$STAMP" 2>/dev/null || true
+        fi
     ) &
     eend 0
 }
