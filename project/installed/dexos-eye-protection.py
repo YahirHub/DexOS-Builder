@@ -3,6 +3,9 @@ import configparser
 import os
 import signal
 import subprocess
+import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 import gi
@@ -65,6 +68,13 @@ def stop_daemon():
         pass
 
 
+def redshift_once(temp):
+    return subprocess.run(
+        ['redshift', '-m', 'randr', '-l', 'manual:lat=0:lon=0', '-P', '-O', str(int(temp))],
+        text=True, capture_output=True, check=False,
+    )
+
+
 def reset_gamma():
     return subprocess.run(
         ['redshift', '-m', 'randr', '-l', 'manual:lat=0:lon=0', '-x'],
@@ -72,26 +82,128 @@ def reset_gamma():
     )
 
 
+def fallback_temperature(night_temp, now=None):
+    """Return a local-clock fallback temperature when geolocation is offline.
+
+    Without coordinates an exact sunrise/sunset cannot be calculated. DexOS
+    therefore uses the configured local timezone: warm at night, neutral by
+    day, with two-hour dawn/dusk transitions.
+    """
+    now = now or datetime.now()
+    hour = now.hour + now.minute / 60.0 + now.second / 3600.0
+    night = max(3000, min(6500, int(night_temp)))
+    day = 6500
+    if 8 <= hour < 18:
+        return day
+    if hour >= 20 or hour < 6:
+        return night
+    if 6 <= hour < 8:
+        ratio = (hour - 6) / 2.0
+        return int(round(night + (day - night) * ratio))
+    # 18:00-20:00
+    ratio = (hour - 18) / 2.0
+    return int(round(day + (night - day) * ratio))
+
+
+def internet_available():
+    """Use NetworkManager's connectivity result; no Internet means fallback."""
+    try:
+        result = subprocess.run(
+            ['nmcli', '-t', '-f', 'CONNECTIVITY', 'general'],
+            text=True, capture_output=True, check=False, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip().lower() == 'full'
+
+
+def log_daemon(message):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    with LOGFILE.open('a') as fh:
+        stamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        fh.write(f'[{stamp}] {message}\n')
+
+
+def automatic_daemon(night_temp):
+    """Prefer GeoClue2 and fall back to the local clock while offline."""
+    stopping = False
+    child = None
+
+    def request_stop(*_):
+        nonlocal stopping
+        stopping = True
+        if child is not None and child.poll() is None:
+            try:
+                child.terminate()
+            except ProcessLookupError:
+                pass
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    last_clock_temp = None
+
+    while not stopping:
+        if internet_available():
+            log_daemon('Internet disponible; usando GeoClue2 para amanecer/atardecer.')
+            child = subprocess.Popen(
+                ['redshift', '-m', 'randr', '-l', 'geoclue2', '-P', '-r', '-t', f'6500:{int(night_temp)}'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            while not stopping and child.poll() is None:
+                time.sleep(2)
+            if stopping:
+                break
+            log_daemon(f'GeoClue2 terminó con código {child.returncode}; usando horario local hasta que vuelva a estar disponible.')
+            child = None
+
+        target = fallback_temperature(night_temp)
+        if target != last_clock_temp:
+            result = redshift_once(target)
+            if result.returncode == 0:
+                log_daemon(f'Sin Internet/GeoClue2: temperatura por hora local = {target} K.')
+            else:
+                log_daemon('Fallo al aplicar temperatura por hora local: ' + (result.stderr or '').strip())
+            last_clock_temp = target
+
+        # Retry once per minute. This keeps the fallback lightweight while
+        # still adopting GeoClue2 shortly after Internet comes back.
+        for _ in range(6):
+            if stopping:
+                break
+            time.sleep(10)
+
+    if child is not None and child.poll() is None:
+        try:
+            child.terminate()
+            child.wait(timeout=3)
+        except (ProcessLookupError, subprocess.TimeoutExpired):
+            try:
+                child.kill()
+            except ProcessLookupError:
+                pass
+    return 0
+
+
+def start_automatic_daemon(temp):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    with LOGFILE.open('a') as log:
+        proc = subprocess.Popen(
+            [sys.executable, '/usr/local/bin/dexos-eye-protection', '--auto-daemon', str(int(temp))],
+            stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
+        )
+    PIDFILE.write_text(str(proc.pid))
+    return subprocess.CompletedProcess([], 0, '', '')
+
+
 def apply(data):
     stop_daemon()
     if not data['enabled']:
         return reset_gamma()
 
-    temp = str(int(data['temperature']))
+    temp = int(data['temperature'])
     if data['automatic']:
-        CACHE.mkdir(parents=True, exist_ok=True)
-        log = LOGFILE.open('a')
-        proc = subprocess.Popen(
-            ['redshift', '-m', 'randr', '-l', 'geoclue2', '-P', '-r', '-t', f'6500:{temp}'],
-            stdout=log, stderr=subprocess.STDOUT, start_new_session=True,
-        )
-        PIDFILE.write_text(str(proc.pid))
-        return subprocess.CompletedProcess([], 0, '', '')
-
-    return subprocess.run(
-        ['redshift', '-m', 'randr', '-l', 'manual:lat=0:lon=0', '-P', '-O', temp],
-        text=True, capture_output=True, check=False,
-    )
+        return start_automatic_daemon(temp)
+    return redshift_once(temp)
 
 
 class EyeProtection(Gtk.Window):
@@ -110,7 +222,7 @@ class EyeProtection(Gtk.Window):
         title.set_xalign(0)
         box.pack_start(title, False, False, 0)
 
-        desc = Gtk.Label(label='Reduce la luz azul. Puede usar GeoClue2 para ajustar automáticamente la temperatura según amanecer y atardecer.')
+        desc = Gtk.Label(label='Reduce la luz azul. Con Internet usa GeoClue2 para amanecer y atardecer; sin Internet continúa automáticamente usando la hora local.')
         desc.set_line_wrap(True)
         desc.set_xalign(0)
         box.pack_start(desc, False, False, 0)
@@ -124,7 +236,7 @@ class EyeProtection(Gtk.Window):
         row.pack_end(self.switch, False, False, 0)
         box.pack_start(row, False, False, 0)
 
-        self.auto = Gtk.CheckButton(label='Ajustar automáticamente con ubicación (GeoClue2)')
+        self.auto = Gtk.CheckButton(label='Ajustar automáticamente (GeoClue2 + respaldo por hora local)')
         self.auto.set_active(self.data['automatic'])
         box.pack_start(self.auto, False, False, 0)
 
@@ -176,7 +288,7 @@ class EyeProtection(Gtk.Window):
             if not self.data['enabled']:
                 msg = 'Protección desactivada.'
             elif self.data['automatic']:
-                msg = 'Protección activa con ajuste automático por GeoClue2.'
+                msg = 'Protección automática activa. Usa GeoClue2 con Internet y la hora local sin conexión.'
             else:
                 msg = 'Protección activa con temperatura manual.'
             if self.data['autostart']:
@@ -187,6 +299,13 @@ class EyeProtection(Gtk.Window):
 
 
 def main():
+    if '--auto-daemon' in os.sys.argv:
+        try:
+            i = os.sys.argv.index('--auto-daemon')
+            temp = int(os.sys.argv[i + 1])
+        except (ValueError, IndexError):
+            raise SystemExit(2)
+        raise SystemExit(automatic_daemon(max(3000, min(6500, temp))))
     if '--startup' in os.sys.argv:
         data = load_config()
         if not data['autostart']:

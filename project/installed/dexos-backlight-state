@@ -7,6 +7,15 @@ STATE_DIR=/var/lib/dexos/backlight
 # The value is clamped because firmware/kernel updates may change max_brightness.
 restore_backlights() {
     [ -d /sys/class/backlight ] || return 0
+    # Some laptop backlight drivers appear a little after udev-settle. Wait
+    # briefly instead of losing the restore for the whole boot.
+    i=0
+    while [ "$i" -lt 50 ]; do
+        set -- /sys/class/backlight/*
+        [ -d "$1" ] && break
+        sleep 0.1
+        i=$((i + 1))
+    done
     for dev in /sys/class/backlight/*; do
         [ -d "$dev" ] || continue
         name=${dev##*/}
@@ -14,13 +23,17 @@ restore_backlights() {
         [ -r "$state" ] || continue
         value=$(cat "$state" 2>/dev/null || true)
         max=$(cat "$dev/max_brightness" 2>/dev/null || true)
-        case "$value:$max" in
-            ''*|*[!0-9:]*) continue ;;
-        esac
+        # Validate each value separately. The previous pattern used `''*`,
+        # which collapses to `*` in POSIX shell and therefore matched every
+        # value, silently skipping every restore attempt.
+        case "$value" in ''|*[!0-9]*) continue ;; esac
+        case "$max" in ''|*[!0-9]*) continue ;; esac
         [ "$max" -gt 0 ] 2>/dev/null || continue
         [ "$value" -le "$max" ] || value=$max
         [ "$value" -ge 0 ] || value=0
-        printf '%s\n' "$value" > "$dev/brightness" 2>/dev/null || true
+        if printf '%s\n' "$value" > "$dev/brightness" 2>/dev/null; then
+            logger -t dexos-backlight "restored $name=$value/$max" 2>/dev/null || true
+        fi
     done
 }
 

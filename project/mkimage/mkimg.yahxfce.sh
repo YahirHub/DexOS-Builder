@@ -9,7 +9,7 @@ profile_yahxfce() {
     desc="DexOS: sistema Live ligero basado en Alpine Linux con XFCE para PC y laptop."
     arch="x86_64"
     image_name="DexOS"
-    output_filename="DexOS-edge-x86_64-v013.iso"
+    output_filename="DexOS-edge-x86_64-v014.iso"
     hostname="dexos-live"
     apkovl="genapkovl-yahxfce.sh"
     kernel_flavors="lts"

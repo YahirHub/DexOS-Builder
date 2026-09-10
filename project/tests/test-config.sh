@@ -273,7 +273,7 @@ grep -q '^\[redshift\]$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
 grep -q '^allowed=true$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
 grep -q '^Exec=/usr/local/bin/dexos-eye-protection --startup$' rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
 grep -q 'Iniciar protección automáticamente al entrar a DexOS' rootfs/usr/local/bin/dexos-eye-protection
-grep -q 'Ajustar automáticamente con ubicación (GeoClue2)' rootfs/usr/local/bin/dexos-eye-protection
+grep -q 'Ajustar automáticamente (GeoClue2 + respaldo por hora local)' rootfs/usr/local/bin/dexos-eye-protection
 test -f rootfs/usr/share/applications/dexos-eye-protection.desktop
 test -f rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
 grep -q "redshift', '-m', 'randr', '-l', 'geoclue2'" rootfs/usr/local/bin/dexos-eye-protection
@@ -303,5 +303,17 @@ grep -q 'auth_admin_keep' rootfs/usr/share/polkit-1/actions/org.dexos.boot-manag
 grep -q 'org.freedesktop.policykit.exec.allow_gui' rootfs/usr/share/polkit-1/actions/org.dexos.boot-manager.policy
 grep -q "ensure_admin()" rootfs/usr/local/bin/dexos-boot-manager
 grep -q "os.execv(pkexec" rootfs/usr/local/bin/dexos-boot-manager
+
+
+# v014: brightness restore regression + offline Redshift fallback.
+! grep -q "case \"\$value:\$max\" in" rootfs/etc/init.d/dexos-backlight
+grep -Fq 'case "$value" in' rootfs/etc/init.d/dexos-backlight
+grep -Fq 'case "$max" in' rootfs/etc/init.d/dexos-backlight
+grep -q 'restored \$name=\$value/\$max' rootfs/etc/init.d/dexos-backlight
+grep -q 'fallback_temperature' rootfs/usr/local/bin/dexos-eye-protection
+grep -q 'internet_available' rootfs/usr/local/bin/dexos-eye-protection
+grep -q -- '--auto-daemon' rootfs/usr/local/bin/dexos-eye-protection
+grep -q 'Sin Internet/GeoClue2' rootfs/usr/local/bin/dexos-eye-protection
+grep -q 'hora local sin conexión' rootfs/usr/local/bin/dexos-eye-protection
 
 echo 'test-config: OK'

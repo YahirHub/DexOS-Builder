@@ -50,3 +50,13 @@ Permitir instalación segura en disco completo o coexistencia con Windows/Linux,
 - [x] Corregir lectura vacía de GRUB causada por permisos de `/boot/grub/grub.cfg`.
 - [x] Compilar y verificar ISO v013.
 - [ ] Validar visualmente el diálogo PolicyKit y la persistencia volumen/brillo tras una instalación v013 completa.
+
+## Extensión v014 — brillo y Redshift offline
+
+- [x] Encontrar la causa exacta de que el brillo guardado no se restaurara.
+- [x] Corregir la validación POSIX que descartaba todos los valores de backlight.
+- [x] Esperar drivers de backlight tardíos antes de restaurar.
+- [x] Mantener Redshift funcional sin Internet mediante horario local.
+- [x] Volver automáticamente a GeoClue2 cuando haya conectividad.
+- [x] Generar y verificar ISO v014.
+- [ ] Confirmar en hardware real que el brillo persiste después de reiniciar v014.

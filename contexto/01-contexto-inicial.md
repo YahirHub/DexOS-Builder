@@ -240,3 +240,27 @@ Validación v013:
 - Overlay inspeccionado: servicios `alsa` y `dexos-backlight` habilitados; política PolicyKit y gestor GRUB presentes; no quedan comandos que fuercen volumen/mute.
 - XML de PolicyKit parseado correctamente.
 - `test-config: OK`, `test-installer: OK`, `git diff --check`: OK.
+
+## 2026-09-10 — DexOS Desktop v014: brillo persistente y Redshift sin Internet
+
+Se corrigió la persistencia de brillo de v013. La causa estaba en `dexos-backlight-state`: la validación usaba un patrón POSIX `''*` dentro de `case`, que equivale a `*` y por tanto coincidía con cualquier valor. Como resultado, `restore_backlights()` saltaba siempre todas las interfaces y nunca escribía el brillo guardado aunque el estado sí se hubiese almacenado correctamente.
+
+Cambios v014:
+
+- La validación de `brightness` y `max_brightness` ahora se hace por separado y sólo descarta valores vacíos/no numéricos.
+- La restauración espera hasta 5 segundos por la aparición de `/sys/class/backlight/*` para equipos cuyos drivers de retroiluminación aparecen tarde.
+- Se registra en syslog cada restauración efectiva con `dexos-backlight` para facilitar diagnóstico en hardware real.
+- Redshift automático ahora se ejecuta mediante un pequeño supervisor de DexOS: con Internet usa GeoClue2; si NetworkManager no reporta conectividad completa o GeoClue2 falla, aplica una temperatura basada en la hora local y continúa funcionando sin red.
+- El fallback horario usa 6500 K durante el día, la temperatura nocturna configurada entre 20:00 y 06:00, y transiciones graduales 06:00–08:00 y 18:00–20:00.
+- Si vuelve Internet, el supervisor reintenta GeoClue2 aproximadamente una vez por minuto.
+- El modo manual sigue disponible y aplica exactamente la temperatura elegida, sin depender de red ni ubicación.
+
+Validación v014:
+
+- ISO: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v014.iso`
+- Tamaño: 1,395,523,584 bytes.
+- SHA-256: `94ece08a58497bcdfc0fd2a7b10df39f007e3688fcb68a8e217c3583c280e9f3`.
+- `sha256sum -c`: OK.
+- Overlay final inspeccionado: contiene la validación corregida del brillo y el supervisor/fallback horario de Redshift.
+- `test-config: OK`, `test-installer: OK`, `git diff --check`: OK.
+- La corrección exacta del brillo está validada por código/pruebas; queda pendiente comprobar la persistencia en un portátil físico con v014 después de reiniciar.

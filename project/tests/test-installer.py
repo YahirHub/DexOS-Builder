@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-import importlib.util, inspect, pathlib, subprocess, tarfile, tempfile
+import ast, datetime, importlib.util, inspect, pathlib, subprocess, tarfile, tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 path = ROOT / 'project/installer/dexos-installer-backend.py'
@@ -270,5 +270,24 @@ policy = (ROOT/'project/installed/org.dexos.boot-manager.policy').read_text()
 assert 'auth_admin_keep' in policy and 'org.freedesktop.policykit.exec.allow_gui' in policy
 assert 'ensure_admin()' in boot_gui and "os.execv(pkexec" in boot_gui
 assert 'privileged(' not in boot_gui
+
+
+# v014 brightness regression: restore validation must not contain a wildcard
+# branch that matches every value.
+assert 'case "$value:$max" in' not in backlight
+assert 'case "$value" in' in backlight and 'case "$max" in' in backlight
+assert 'restored $name=$value/$max' in backlight
+
+# Offline Redshift uses local time with gradual dawn/dusk transitions.
+eye_tree = ast.parse(eye_gui)
+fallback_node = next(node for node in eye_tree.body if isinstance(node, ast.FunctionDef) and node.name == 'fallback_temperature')
+ns = {'datetime': datetime.datetime}
+exec(compile(ast.Module(body=[fallback_node], type_ignores=[]), '<fallback_temperature>', 'exec'), ns)
+fallback_temperature = ns['fallback_temperature']
+assert fallback_temperature(4500, datetime.datetime(2026, 9, 10, 2, 0)) == 4500
+assert fallback_temperature(4500, datetime.datetime(2026, 9, 10, 8, 0)) == 6500
+assert fallback_temperature(4500, datetime.datetime(2026, 9, 10, 19, 0)) == 5500
+assert '--auto-daemon' in eye_gui and 'internet_available' in eye_gui
+assert 'Sin Internet/GeoClue2' in eye_gui
 
 print('test-installer: OK')
