@@ -4,14 +4,11 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 INSTALLER_ASSETS="$SCRIPT_DIR"
 [ -f "$INSTALLER_ASSETS/dexos-installer.py" ] || INSTALLER_ASSETS="$SCRIPT_DIR/../installer"
 BRAND_ASSETS="$SCRIPT_DIR"
-[ -f "$BRAND_ASSETS/dexos-boot.jpg" ] || BRAND_ASSETS="$SCRIPT_DIR/../assets"
+[ -f "$BRAND_ASSETS/argon-grub-theme/theme.txt" ] || BRAND_ASSETS="$SCRIPT_DIR/../assets"
 SYSTEM_ASSETS="$SCRIPT_DIR"
-[ -f "$SYSTEM_ASSETS/dexos-session-splash.py" ] || SYSTEM_ASSETS="$SCRIPT_DIR/../installed"
+[ -f "$SYSTEM_ASSETS/dexos-session" ] || SYSTEM_ASSETS="$SCRIPT_DIR/../installed"
 for f in dexos-installer.py dexos-installer-backend.py installer-packages.txt; do
     [ -f "$INSTALLER_ASSETS/$f" ] || { echo "Falta recurso del instalador: $f" >&2; exit 1; }
-done
-for f in dexos-boot.jpg dexos-boot.ppm; do
-    [ -f "$BRAND_ASSETS/$f" ] || { echo "Falta recurso visual: $f" >&2; exit 1; }
 done
 WALLPAPER_ASSET="${DEXOS_WALLPAPER_ASSET:-}"
 if [ -n "$WALLPAPER_ASSET" ] && [ ! -s "$WALLPAPER_ASSET" ]; then
@@ -28,7 +25,7 @@ ARGON_ASSET="$BRAND_ASSETS/argon-grub-theme"
 [ -f "$ARGON_ASSET/theme.txt" ] || { echo "Falta tema Argon precompilado" >&2; exit 1; }
 CURSOR_ASSET="$BRAND_ASSETS/dexos-windows-cursor"
 [ -f "$CURSOR_ASSET/index.theme" ] && [ -f "$CURSOR_ASSET/cursors/left_ptr" ] || { echo "Falta tema de cursor DexOS-Windows" >&2; exit 1; }
-for f in dexos-session-splash.py dexos-session dexos-splash-keys dexos-bootsplash dexos-bootsplash-finish dexos-wifi-init dexos-wifi-refresh dexos-audio-init dexos-apk-refresh dexos-language.py dexos-trust-launchers dexos-video-init dexos-prepare-desktop dexos-boot-manager.py dexos-eye-protection.py dexos-power-init dexos-power-apply dexos-backlight-state org.dexos.boot-manager.policy boot-order grub-update grub-other-os 05_dexos_theme 09_dexos_linux; do
+for f in dexos-session dexos-wifi-init dexos-wifi-refresh dexos-audio-init dexos-apk-refresh dexos-language.py dexos-trust-launchers dexos-video-init dexos-prepare-desktop dexos-boot-manager.py dexos-eye-protection.py dexos-power-init dexos-power-apply dexos-backlight-state org.dexos.boot-manager.policy boot-order grub-update grub-other-os 05_dexos_theme 09_dexos_linux; do
     [ -f "$SYSTEM_ASSETS/$f" ] || { echo "Falta recurso del sistema: $f" >&2; exit 1; }
 done
 tmp="$(mktemp -d)"
@@ -328,8 +325,6 @@ user-background=false
 EOF_GREETER
 
 mkdir -p "$tmp/usr/share/dexos" "$tmp/usr/share/xsessions" "$tmp/usr/local/bin" "$tmp/usr/local/sbin" "$tmp/etc/init.d" "$tmp/usr/share/backgrounds/xfce" "$tmp/usr/share/xfce4/backdrops"
-install -m 0644 "$BRAND_ASSETS/dexos-boot.jpg" "$tmp/usr/share/dexos/boot.jpg"
-install -m 0644 "$BRAND_ASSETS/dexos-boot.ppm" "$tmp/usr/share/dexos/boot.ppm"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/dexos/dexos-wallpaper.png"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/backgrounds/xfce/DexOS.png"
 install -m 0644 "$WALLPAPER_ASSET" "$tmp/usr/share/xfce4/backdrops/DexOS.png"
@@ -339,12 +334,8 @@ mkdir -p "$tmp/usr/share/icons"
 ln -sfn adwaita-xfce "$tmp/usr/share/icons/Adwaita-Xfce"
 mkdir -p "$tmp/usr/share/icons/adwaita-xfce/scalable/categories"
 ln -sfn applications-other.svg "$tmp/usr/share/icons/adwaita-xfce/scalable/categories/applications.svg"
-install -m 0755 "$SYSTEM_ASSETS/dexos-session-splash.py" "$tmp/usr/local/bin/dexos-session-splash"
 install -m 0755 "$SYSTEM_ASSETS/dexos-session" "$tmp/usr/local/bin/dexos-session"
 mkdir -p "$tmp/usr/share/dexos/installed"
-install -m 0755 "$SYSTEM_ASSETS/dexos-splash-keys" "$tmp/usr/share/dexos/installed/dexos-splash-keys"
-install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash" "$tmp/usr/share/dexos/installed/dexos-bootsplash"
-install -m 0755 "$SYSTEM_ASSETS/dexos-bootsplash-finish" "$tmp/usr/share/dexos/installed/dexos-bootsplash-finish"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/usr/share/dexos/installed/dexos-wifi-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-init" "$tmp/etc/init.d/dexos-wifi-init"
 install -m 0755 "$SYSTEM_ASSETS/dexos-wifi-refresh" "$tmp/usr/share/dexos/installed/dexos-wifi-refresh"
@@ -381,7 +372,6 @@ install -m 0755 "$SYSTEM_ASSETS/09_dexos_linux" "$tmp/usr/share/dexos/installed/
 # XFCE 4.20 falls back to xfce-x.svg on a fresh channel. Overlay that exact
 # path with DexOS so even an internal first-run reset cannot show XFCE artwork.
 ln -sf /usr/share/dexos/dexos-wallpaper.png "$tmp/usr/share/backgrounds/xfce/xfce-x.svg"
-install -m 0755 "$SCRIPT_DIR/patch-initramfs-init.py" "$tmp/usr/share/dexos/installed/patch-initramfs-init.py"
 makefile root:root 0644 "$tmp/usr/share/xsessions/dexos.desktop" <<'EOF_DEXOS_SESSION'
 [Desktop Entry]
 Name=DexOS
@@ -392,10 +382,10 @@ Type=Application
 DesktopNames=XFCE
 EOF_DEXOS_SESSION
 
-# Xorg pinta rojo mate inmediatamente, antes de que XFCE termine su primer frame.
+# Keep the pre-desktop X root neutral; the wallpaper appears when XFCE starts.
 makefile root:root 0755 "$tmp/usr/local/sbin/dexos-xsetup" <<'EOF_XSETUP'
 #!/bin/sh
-/usr/bin/xsetroot -solid '#6b2a2e' || true
+/usr/bin/xsetroot -solid '#000000' || true
 /usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
 exit 0
 EOF_XSETUP
@@ -421,15 +411,24 @@ Section "InputClass"
 EndSection
 
 Section "InputClass"
-    Identifier "DexOS touchpad"
+    Identifier "DexOS Windows-like touchpad"
     MatchIsTouchpad "on"
     Driver "libinput"
+    # Windows Precision Touchpad-style defaults: accelerated cursor, tap,
+    # two-finger right click/scroll, no natural-scroll reversal and palm guard.
     Option "Tapping" "on"
     Option "TappingButtonMap" "lrm"
+    Option "TappingDrag" "on"
+    Option "TappingDragLock" "off"
     Option "DisableWhileTyping" "on"
     Option "ScrollMethod" "twofinger"
+    Option "HorizontalScrolling" "on"
+    Option "NaturalScrolling" "off"
+    Option "ClickMethod" "buttonareas"
+    Option "MiddleEmulation" "off"
     Option "AccelProfile" "adaptive"
-    Option "AccelSpeed" "0.20"
+    Option "AccelSpeed" "0.00"
+    Option "ScrollPixelDistance" "15"
 EndSection
 EOF_LIBINPUT
 
@@ -501,16 +500,15 @@ makefile root:root 0644 "$tmp/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-des
 <channel name="xfce4-desktop" version="1.0"><property name="backdrop" type="empty"><property name="screen0" type="empty"><property name="monitor0" type="empty"><property name="workspace0" type="empty"><property name="last-image" type="string" value="/usr/share/dexos/dexos-wallpaper.png"/><property name="image-style" type="int" value="5"/><property name="color-style" type="int" value="0"/><property name="rgba1" type="array"><value type="double" value="0.1686"/><value type="double" value="0.0902"/><value type="double" value="0.0980"/><value type="double" value="1"/></property></property></property></property></property></channel>
 EOF_DESKTOP_XFCE
 
-# Aplica la identidad DexOS al monitor real que XFCE detecte (VGA-1, Virtual-1, eDP-1, etc.).
+# Apply UI theme/cursor only. Wallpaper ownership belongs to XFCE after the
+# one-time dexos-prepare-desktop seed and is never overwritten here.
 makefile root:root 0755 "$tmp/usr/local/bin/dexos-apply-theme" <<'EOF_APPLY_THEME'
 #!/bin/sh
-wall=/usr/share/dexos/dexos-wallpaper.png
-/usr/bin/xsetroot -solid '#6b2a2e' 2>/dev/null || true
+/usr/bin/xsetroot -solid '#000000' 2>/dev/null || true
 /usr/bin/xsetroot -cursor_name left_ptr 2>/dev/null || true
 
-# This helper can start before XFCE creates its private DBus session. Wait for
-# xfdesktop and import its environment so xfconf-query reaches the real user
-# xfconfd instead of a non-existent/wrong bus.
+# Wait for the user xfconfd session so these cosmetic defaults reach the right
+# DBus session, but never modify the user wallpaper.
 i=0
 xpid=
 while [ "$i" -lt 120 ]; do
@@ -527,59 +525,16 @@ if [ -n "$xpid" ] && [ -r "/proc/$xpid/environ" ]; then
             XAUTHORITY=*) export XAUTHORITY=${envline#*=} ;;
         esac
     done <<EOF_ENV
-$(tr '\0' '\n' < "/proc/$xpid/environ")
+$(tr '\0' '
+' < "/proc/$xpid/environ")
 EOF_ENV
 fi
-
-i=0
-while [ "$i" -lt 40 ]; do
-    xfconf-query -c xfce4-desktop -l >/dev/null 2>&1 && break
-    sleep 0.25
-    i=$((i + 1))
-done
-
-set_backdrop() {
-    base=$1
-    xfconf-query -c xfce4-desktop -p "$base/last-image" -s "$wall" 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/last-image" -n -t string -s "$wall" 2>/dev/null || true
-    xfconf-query -c xfce4-desktop -p "$base/image-style" -s 5 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/image-style" -n -t int -s 5 2>/dev/null || true
-    xfconf-query -c xfce4-desktop -p "$base/color-style" -s 0 2>/dev/null || \
-      xfconf-query -c xfce4-desktop -p "$base/color-style" -n -t int -s 0 2>/dev/null || true
-}
-
-# Existing XFCE properties (covers migrations and multiple workspaces).
-props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
-printf '%s\n' "$props" | while IFS= read -r prop; do
-    [ -n "$prop" ] || continue
-    set_backdrop "${prop%/last-image}"
-done
-
-# Connected output names (Virtual-1, eDP-1, HDMI-1, ...).
-xrandr --query 2>/dev/null | awk '$2=="connected" {print $1}' | while read -r mon; do
-    [ -n "$mon" ] || continue
-    set_backdrop "/backdrop/screen0/monitor${mon}/workspace0"
-done
-# Generic fallback used before XFCE has named the physical output.
-set_backdrop "/backdrop/screen0/monitor0/workspace0"
-
 xfconf-query -c xsettings -p /Net/ThemeName -s adw-gtk3-dark 2>/dev/null || true
 xfconf-query -c xsettings -p /Net/IconThemeName -s Adwaita-Xfce 2>/dev/null || true
 xfconf-query -c xsettings -p /Gtk/CursorThemeName -s DexOS-Windows 2>/dev/null || \
   xfconf-query -c xsettings -p /Gtk/CursorThemeName -n -t string -s DexOS-Windows 2>/dev/null || true
 xfconf-query -c xsettings -p /Gtk/CursorThemeSize -s 32 2>/dev/null || \
   xfconf-query -c xsettings -p /Gtk/CursorThemeSize -n -t int -s 32 2>/dev/null || true
-
-# XFCE's first-run migration may write defaults a moment after xfdesktop starts.
-# Re-apply after that migration and force the desktop process to redraw.
-xfdesktop --reload >/dev/null 2>&1 || true
-sleep 2
-props=$(xfconf-query -c xfce4-desktop -l 2>/dev/null | grep '/last-image$' || true)
-printf '%s\n' "$props" | while IFS= read -r prop; do
-    [ -n "$prop" ] || continue
-    xfconf-query -c xfce4-desktop -p "$prop" -s "$wall" 2>/dev/null || true
-done
-xfdesktop --reload >/dev/null 2>&1 || true
 exit 0
 EOF_APPLY_THEME
 mkdir -p "$tmp/etc/xdg/autostart"
@@ -600,7 +555,7 @@ makefile root:root 0644 "$tmp/etc/xdg/autostart/dexos-branding.desktop" <<'EOF_B
 [Desktop Entry]
 Type=Application
 Name=DexOS Branding
-Comment=Apply DexOS matte-red desktop identity
+Comment=Apply DexOS desktop theme and cursor
 Exec=/usr/local/bin/dexos-apply-theme
 OnlyShowIn=XFCE;
 Terminal=false
@@ -700,168 +655,6 @@ start(){
 }
 EOF_USER
 
-# Mantiene el splash visible durante OpenRC y permite ESC para alternar detalles.
-makefile root:root 0755 "$tmp/usr/local/sbin/dexos-splash-keys" <<'EOF_SPLASH_KEYS'
-#!/bin/sh
-esc="$(printf '\033')"
-current=16
-case "$(cat /sys/class/tty/tty0/active 2>/dev/null || true)" in
-    *tty1*) current=1 ;;
-esac
-while [ -p /.splash.ctrl ]; do
-    dev="/dev/tty$current"
-    [ -c "$dev" ] || { sleep 1; continue; }
-    stty -F "$dev" -echo -icanon min 1 time 0 2>/dev/null || exit 0
-    key=
-    IFS= read -r -n 1 key < "$dev" || continue
-    [ "$key" = "$esc" ] || continue
-    if [ "$current" -eq 16 ]; then
-        touch /.dexos-show-boot-log
-        printf '\033[H\033[2JDexOS — detalles del arranque (ESC para volver)\n\n' > /dev/tty1
-        dmesg > /dev/tty1 2>/dev/null || true
-        rc-status -a > /dev/tty1 2>/dev/null || true
-        chvt 1
-        current=1
-    else
-        rm -f /.dexos-show-boot-log
-        chvt 16
-        sleep 0.05
-        if [ -r /usr/share/dexos/fbsplash.ppm ] && [ -r /etc/dexos/fbsplash.cfg ]; then
-            fbsplash -s /usr/share/dexos/fbsplash.ppm -d /dev/fb0 -i /etc/dexos/fbsplash.cfg >/dev/null 2>&1 || true
-        fi
-        if [ -r /.dexos-splash-progress ] && [ -p /.splash.ctrl ]; then
-            pct=$(cat /.dexos-splash-progress 2>/dev/null || echo 91)
-            timeout 1 sh -c "printf '%s\n' '$pct' > /.splash.ctrl" 2>/dev/null || true
-        fi
-        current=16
-    fi
-done
-EOF_SPLASH_KEYS
-
-makefile root:root 0755 "$tmp/etc/init.d/dexos-splash-keys" <<'EOF_SPLASH_SERVICE'
-#!/sbin/openrc-run
-name="DexOS boot detail toggle"
-description="Allow ESC to toggle between splash and boot details"
-depend(){ need localmount; before lightdm; }
-start(){
-    [ -p /.splash.ctrl ] || return 0
-    printf '91\n' > /.dexos-splash-progress
-    printf '91\n' > /.splash.ctrl 2>/dev/null || true
-    /usr/local/sbin/dexos-splash-keys &
-    echo $! > /run/dexos-splash-keys.pid
-}
-stop(){
-    if [ -r /run/dexos-splash-keys.pid ]; then
-        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
-        rm -f /run/dexos-splash-keys.pid
-    fi
-    stty -F /dev/tty1 sane 2>/dev/null || true
-    stty -F /dev/tty16 sane 2>/dev/null || true
-}
-EOF_SPLASH_SERVICE
-
-# Monitor desacoplado: no hace fallar LightDM si XFCE tarda en TCG/equipos lentos.
-makefile root:root 0755 "$tmp/usr/local/sbin/dexos-desktop-ready" <<'EOF_DESKTOP_READY'
-#!/bin/sh
-finish_splash() {
-    if [ -r /run/dexos-splash-keys.pid ]; then
-        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
-        rm -f /run/dexos-splash-keys.pid
-    fi
-    stty -F /dev/tty1 sane 2>/dev/null || true
-    stty -F /dev/tty16 sane 2>/dev/null || true
-    if [ -p /.splash.ctrl ]; then
-        timeout 2 sh -c "printf 'exit\n' > /.splash.ctrl" 2>/dev/null || true
-        rm -f /.splash.ctrl
-    fi
-    rm -f /.dexos-show-boot-log /.dexos-splash-progress
-}
-progress() {
-    printf '%s\n' "$1" > /.dexos-splash-progress
-    [ -p /.splash.ctrl ] || return 0
-    timeout 1 sh -c "printf '%s\n' '$1' > /.splash.ctrl" 2>/dev/null || true
-}
-
-progress 97
-i=0
-# Hasta 180 s: máquinas sin KVM o hardware lento pueden tardar mucho en iniciar XFCE.
-while [ "$i" -lt 720 ]; do
-    if pidof xfce4-session >/dev/null 2>&1 \
-       && pidof xfwm4 >/dev/null 2>&1 \
-       && pidof xfdesktop >/dev/null 2>&1 \
-       && pidof xfce4-panel >/dev/null 2>&1; then
-        progress 100
-        sleep 0.75
-        finish_splash
-        exit 0
-    fi
-    # Si LightDM realmente murió, no ocultar el diagnóstico detrás del splash.
-    if [ "$i" -gt 20 ] && ! pidof lightdm >/dev/null 2>&1; then
-        finish_splash
-        printf '\033[H\033[2JDexOS: LightDM terminó inesperadamente. Revise /var/log/lightdm/.\n' > /dev/tty1
-        chvt 1 2>/dev/null || true
-        exit 1
-    fi
-    sleep 0.25
-    i=$((i + 1))
-done
-
-# El timeout del monitor nunca cambia el estado OpenRC de LightDM.
-finish_splash
-printf '\033[H\033[2JDexOS: XFCE tardó más de 180 segundos en quedar listo.\n' > /dev/tty1
-chvt 1 2>/dev/null || true
-exit 1
-EOF_DESKTOP_READY
-
-# LightDM espera a dependencias críticas, pero la espera de XFCE ocurre aparte.
-makefile root:root 0755 "$tmp/etc/init.d/lightdm" <<'EOF_LIGHTDM_INIT'
-#!/sbin/openrc-run
-supervisor=supervise-daemon
-name="Display Manager"
-description="Lightweight Display Manager with DexOS Live readiness gate"
-command=/usr/bin/lightdm
-
-depend() {
-    provide display-manager
-    need localmount dbus elogind networkmanager dexos-live-user
-    after udev-postmount dexos-splash-keys
-}
-
-splash_progress() {
-    printf '%s\n' "$1" > /.dexos-splash-progress
-    [ -p /.splash.ctrl ] || return 0
-    timeout 2 sh -c "printf '%s\n' '$1' > /.splash.ctrl" 2>/dev/null || true
-}
-
-splash_finish() {
-    if [ -r /run/dexos-splash-keys.pid ]; then
-        kill "$(cat /run/dexos-splash-keys.pid)" 2>/dev/null || true
-        rm -f /run/dexos-splash-keys.pid
-    fi
-    stty -F /dev/tty1 sane 2>/dev/null || true
-    stty -F /dev/tty16 sane 2>/dev/null || true
-    if [ -p /.splash.ctrl ]; then
-        timeout 2 sh -c "printf 'exit\n' > /.splash.ctrl" 2>/dev/null || true
-        rm -f /.splash.ctrl
-    fi
-    rm -f /.dexos-show-boot-log /.dexos-splash-progress
-}
-
-start_pre() {
-    splash_progress 94
-    udevadm settle --timeout=15 >/dev/null 2>&1 || true
-    sleep 1
-    checkpath --owner lightdm:lightdm --directory /run/lightdm
-}
-
-start_post() {
-    splash_progress 97
-    rm -f /run/dexos-desktop-ready.pid
-    nohup /usr/local/sbin/dexos-desktop-ready >/run/dexos-desktop-ready.log 2>&1 &
-    echo $! > /run/dexos-desktop-ready.pid
-    return 0
-}
-EOF_LIGHTDM_INIT
 
 # Sólo el backend validado puede elevarse. La interfaz GTK siempre corre como usuario Live.
 makefile root:root 0600 "$tmp/etc/doas.d/20-dexos-live.conf" <<'EOF_DOAS'
@@ -911,7 +704,6 @@ rc_add sysctl boot
 rc_add hostname boot
 rc_add bootmisc boot
 rc_add syslog boot
-rc_add dexos-splash-keys boot
 rc_add dbus default
 rc_add alsa default
 rc_add dexos-backlight default

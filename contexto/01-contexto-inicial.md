@@ -264,3 +264,26 @@ Validación v014:
 - Overlay final inspeccionado: contiene la validación corregida del brillo y el supervisor/fallback horario de Redshift.
 - `test-config: OK`, `test-installer: OK`, `git diff --check`: OK.
 - La corrección exacta del brillo está validada por código/pruebas; queda pendiente comprobar la persistencia en un portátil físico con v014 después de reiniciar.
+
+## 2026-09-11 — DexOS Desktop v015: Night Light persistente, arranque limpio y touchpad tipo Windows
+
+Cambios solicitados tras validar v014 en hardware real:
+
+- Protección de la vista / Redshift ahora persiste con el mismo modelo que otras distros: el estado `enabled` es la fuente de verdad. Si el usuario deja la protección activada, `/etc/xdg/autostart/dexos-eye-protection.desktop` ejecuta `--startup` en la siguiente sesión y reaplica automáticamente el modo manual o automático. Ya no existe un segundo checkbox de «iniciar automáticamente» que pudiera quedar desmarcado mientras la protección estaba activa.
+- Se endureció el manejo del PID del supervisor de Redshift para que un PID guardado antes de reiniciar nunca mate por accidente a otro proceso que haya reutilizado ese número.
+- Se eliminaron las imágenes y splash personalizados de arranque/sesión de DexOS: no se incluye `boot.jpg`, `boot.ppm`, `fbsplash.ppm`, `dexos-session-splash`, `dexos-bootsplash`, `dexos-bootsplash-finish`, `dexos-splash-keys` ni el parche de fbsplash del initramfs. Los argumentos `splash` también fueron retirados de GRUB, Syslinux y de la entrada Linux instalada.
+- Se conserva el wallpaper DexOS como fondo inicial. `dexos-prepare-desktop` lo siembra una sola vez y crea `~/.config/dexos/wallpaper-initialized`; desde ahí XFCE es dueño del estado. Si el usuario cambia el wallpaper, DexOS ya no modifica `last-image` ni vuelve a cargar el fondo predeterminado en sesiones posteriores.
+- `dexos-apply-theme` queda limitado a tema GTK/iconos/cursor y no toca el fondo de escritorio.
+- Touchpad ajustado al comportamiento estable más cercano a Windows Precision Touchpad disponible con libinput/Xorg: aceleración adaptativa, velocidad base neutra, tap, arrastre por tap, clic derecho de dos dedos / áreas de botón, scroll de dos dedos horizontal y vertical, scroll no invertido, rechazo mientras se escribe y distancia de scroll de 15 px. No se afirma equivalencia exacta con la curva privada de Windows.
+
+Validación v015:
+
+- ISO: `/workspace/yah-alpine/out/DexOS-edge-x86_64-v015.iso`
+- Tamaño: 1,395,523,584 bytes.
+- SHA-256: `996270f945b8d581002865f40bf504bf08de758cd60d820a30ac67c5d5ec46af`.
+- `sha256sum -c`: OK.
+- GRUB Live y Syslinux inspeccionados: sin argumento `splash`.
+- ISO inspeccionada: no existe `fbsplash.ppm`.
+- Overlay final inspeccionado: no contiene imágenes/splash personalizados; Night Light restaura según `enabled`; wallpaper sólo se siembra una vez; configuración touchpad incluida.
+- `test-config: OK`, `test-installer: OK`, `git diff --check`: OK.
+- Queda pendiente validar en hardware real el tacto final del touchpad y confirmar visualmente que Night Light reaparece tras reiniciar v015.

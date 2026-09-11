@@ -16,7 +16,7 @@ menuentry 'DexOS' --class alpine --class gnu-linux --class gnu --class os {
     insmod part_msdos
     insmod ext2
     search --no-floppy --fs-uuid --set=root $root_uuid
-    linux /boot/vmlinuz-lts root=UUID=$root_uuid ro rootfstype=ext4 quiet splash vt.global_cursor_default=0 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4
+    linux /boot/vmlinuz-lts root=UUID=$root_uuid ro rootfstype=ext4 quiet vt.global_cursor_default=0 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4
     initrd /boot/initramfs-lts
 }
 EOF_GRUB

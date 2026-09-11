@@ -58,17 +58,6 @@ def add_gradient_text(base,text,y,size,center=True):
     glow=Image.new('RGBA',base.size,(255,70,0,0)); glow.putalpha(mask.filter(ImageFilter.GaussianBlur(10)))
     base.alpha_composite(glow); base.alpha_composite(Image.composite(grad,Image.new('RGBA',base.size),(mask)))
 
-def boot():
-    W,H=1280,720
-    img=Image.new('RGBA',(W,H),(0,0,0,255))
-    draw_logo(img,W//2,280,.78)
-    add_gradient_text(img,'Dex OS',430,84)
-    add_gradient_text(img,'Iniciando…',535,42)
-    d=ImageDraw.Draw(img); f=font(FONT,28)
-    txt='ThowiLabs'; box=d.textbbox((0,0),txt,font=f); tw=box[2]-box[0]; x=(W-tw)//2
-    d.text((x,650),txt,font=f,fill=(255,125,10,255)); d.line((x-145,667,x-20,667),fill=(175,55,12,255),width=2); d.line((x+tw+20,667,x+tw+145,667),fill=(175,55,12,255),width=2)
-    rgb=img.convert('RGB'); rgb.save(OUT/'dexos-boot.jpg','JPEG',quality=93,optimize=True,progressive=True); rgb.resize((640,360),Image.Resampling.LANCZOS).save(OUT/'dexos-boot.ppm','PPM')
-
 def wallpaper():
     W,H=1920,1080
     img=Image.new('RGBA',(W,H),(3,5,9,255)); d=ImageDraw.Draw(img)
@@ -85,4 +74,4 @@ def wallpaper():
     txt='T h o w i L a b s'; box=d.textbbox((0,0),txt,font=fm); d.text(((W-(box[2]-box[0]))//2,960),txt,font=fm,fill=(230,125,50,255))
     img.convert('RGB').save(OUT/'dexos-wallpaper.jpg','JPEG',quality=94,optimize=True,progressive=True)
 
-if __name__=='__main__': boot(); wallpaper()
+if __name__=='__main__': wallpaper()

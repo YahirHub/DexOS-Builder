@@ -78,17 +78,14 @@ assert 'parted' not in create_root
 # DexOS owns only its own GRUB entry; foreign Linux entries are never rewritten.
 primary = (ROOT/'project/installed/09_dexos_linux').read_text()
 assert 'root=UUID=$root_uuid' in primary
-assert 'quiet splash' in primary
+assert ' quiet ' in primary and 'splash' not in primary
 assert 'modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4' in primary
 assert 'def rewrite_grub_root' not in backend_text
 
-# Installed initramfs embeds the DexOS splash fallback.
-mk_candidates = sorted(list((ROOT/'cache').rglob('mkinitfs-*.apk')) + list((ROOT/'alpine-root').rglob('mkinitfs-*.apk')))
-assert mk_candidates
-with tarfile.open(mk_candidates[-1], 'r:gz') as tf:
-    init_text = tf.extractfile('usr/share/mkinitfs/initramfs-init').read().decode()
-patched = m.patch_installed_initramfs(init_text)
-assert '/usr/share/dexos/boot.ppm' in patched and patched.count('/usr/share/dexos/boot.ppm') == 1
+# Installed initramfs uses stock mkinitfs without DexOS image/splash patching.
+assert 'patch_installed_initramfs' not in backend_text
+assert 'fbsplash' not in backend_text
+assert '/usr/share/dexos/boot.ppm' not in backend_text
 
 # Three safe installation paths.
 assert "mode == 'erase'" in backend_text
@@ -182,13 +179,13 @@ assert "TARGET / 'usr/local/bin/dexos-language'" in backend_text
 assert "'locale': os.environ.get('LANG'" in ui
 
 
-# v006 installed branding / full splash integration.
+# v006/v015 installed branding: wallpaper remains, boot/session splash removed.
 assert "'/usr/share/dexos/dexos-wallpaper.png'" in backend_text
 assert "TARGET / 'usr/share/dexos/dexos-wallpaper.png'" in backend_text
 assert "TARGET / 'usr/share/backgrounds/xfce/DexOS.png'" in backend_text
 assert "TARGET / 'usr/share/xfce4/backdrops/DexOS.png'" in backend_text
 assert "TARGET / 'etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml'" in backend_text
-assert "patch-initramfs-init.py" in backend_text
+assert "patch-initramfs-init.py" not in backend_text
 assert 'GRUB_GFXPAYLOAD_LINUX=keep' in backend_text
 assert 'vt.global_cursor_default=0' in backend_text
 assert '~language' not in backend_text
@@ -197,10 +194,10 @@ assert "doas', 'reboot'" in ui
 assert "/usr/share/dexos/wallpaper'" not in backend_text
 
 
-# v007 installed splash must be self-contained, not depend on Live /media.
+# v015: no custom DexOS boot image is embedded in the installed initramfs.
 assert "ata base ide scsi usb virtio ext4 nvme kms dexosroot" in backend_text
-for path in ['/usr/share/dexos/boot.ppm','/sbin/fbsplash','/usr/bin/setsid','/usr/bin/chvt','/bin/stty']:
-    assert path in backend_text
+for token in ['/usr/share/dexos/boot.ppm', '/sbin/fbsplash', 'dexos-bootsplash', 'dexos-bootsplash-finish']:
+    assert token not in backend_text
 
 
 # v008 installed sessions use the same deterministic pre-XFCE wallpaper helper.
@@ -216,7 +213,7 @@ primary_gen = (ROOT/'project/installed/09_dexos_linux').read_text()
 fallback_gen = (ROOT/'project/installed/grub-other-os').read_text()
 assert 'gfxmenu' in theme_gen and 'themes/argon/theme.txt' in theme_gen
 assert "menuentry 'DexOS'" in primary_gen and 'root=UUID=$root_uuid' in primary_gen
-assert 'quiet splash' in primary_gen and 'vt.global_cursor_default=0' in primary_gen
+assert ' quiet ' in primary and 'splash' not in primary_gen and 'vt.global_cursor_default=0' in primary_gen
 assert 'os-prober is still the primary detector' in fallback_gen
 assert 'emit_efi_loader' in fallback_gen and 'emit_linux_kernel' in fallback_gen and 'emit_windows_bios' in fallback_gen
 assert "TARGET / 'etc/grub.d/05_dexos_theme'" in backend_text
@@ -289,5 +286,35 @@ assert fallback_temperature(4500, datetime.datetime(2026, 9, 10, 8, 0)) == 6500
 assert fallback_temperature(4500, datetime.datetime(2026, 9, 10, 19, 0)) == 5500
 assert '--auto-daemon' in eye_gui and 'internet_available' in eye_gui
 assert 'Sin Internet/GeoClue2' in eye_gui
+
+
+# v015: persistent Night Light, user-owned wallpaper and Windows-like touchpad.
+prepare_desktop = (ROOT/'project/installed/dexos-prepare-desktop').read_text()
+assert 'wallpaper-initialized' in prepare_desktop
+assert '[ -e "$marker" ] && exit 0' in prepare_desktop
+assert 'last-image' in prepare_desktop
+session = (ROOT/'project/installed/dexos-session').read_text()
+assert 'dexos-session-splash' not in session
+overlay = (ROOT/'project/mkimage/genapkovl-yahxfce.sh').read_text()
+apply_block = overlay.split("<<'EOF_APPLY_THEME'", 1)[1].split('\nEOF_APPLY_THEME', 1)[0]
+assert 'last-image' not in apply_block and 'set_backdrop' not in apply_block
+for token in [
+    'Option "TappingDrag" "on"', 'Option "TappingDragLock" "off"',
+    'Option "HorizontalScrolling" "on"', 'Option "NaturalScrolling" "off"',
+    'Option "ClickMethod" "buttonareas"', 'Option "MiddleEmulation" "off"',
+    'Option "AccelProfile" "adaptive"', 'Option "AccelSpeed" "0.00"',
+    'Option "ScrollPixelDistance" "15"',
+]:
+    assert token in overlay
+assert "if not data['enabled']" in eye_gui
+assert 'self.autostart = Gtk.CheckButton' not in eye_gui
+assert 'Se restaurará automáticamente al iniciar sesión.' in eye_gui
+for removed in [
+    ROOT/'project/assets/dexos-boot.jpg', ROOT/'project/assets/dexos-boot.ppm',
+    ROOT/'project/boot/fbsplash.ppm', ROOT/'project/installed/dexos-session-splash.py',
+    ROOT/'project/installed/dexos-bootsplash', ROOT/'project/installed/dexos-bootsplash-finish',
+    ROOT/'project/installed/dexos-splash-keys', ROOT/'project/mkimage/patch-initramfs-init.py',
+]:
+    assert not removed.exists()
 
 print('test-installer: OK')

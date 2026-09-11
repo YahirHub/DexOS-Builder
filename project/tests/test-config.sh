@@ -29,23 +29,12 @@ for fw in linux-firmware-amdgpu linux-firmware-i915 linux-firmware-intel linux-f
 ! grep -qx 'linux-firmware-qcom' rootfs/etc/apk/world
 ! grep -qx 'linux-firmware-mrvl' rootfs/etc/apk/world
 
-test -L rootfs/etc/runlevels/boot/dexos-splash-keys
-grep -q 'need localmount dbus elogind networkmanager dexos-live-user' rootfs/etc/init.d/lightdm
-grep -q 'udevadm settle --timeout=15' rootfs/etc/init.d/lightdm
-grep -q 'pidof xfce4-session' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q 'progress 100' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q 'ESC para volver' rootfs/usr/local/sbin/dexos-splash-keys
-grep -q 'initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet splash"' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
+grep -q 'initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet"' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
+! grep -q 'quiet splash' "$ROOT/project/mkimage/mkimg.yahxfce.sh"
 
 grep -qx 'xsetroot' rootfs/etc/apk/world
 grep -q '^display-setup-script=/usr/local/sbin/dexos-xsetup$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
-grep -q "xsetroot -solid '#6b2a2e'" rootfs/usr/local/sbin/dexos-xsetup
-grep -q 'nohup /usr/local/sbin/dexos-desktop-ready' rootfs/etc/init.d/lightdm
-grep -q 'return 0' rootfs/etc/init.d/lightdm
-grep -q 'pidof xfwm4' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q 'pidof xfdesktop' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q 'pidof xfce4-panel' rootfs/usr/local/sbin/dexos-desktop-ready
-grep -q '\[ "\$i" -lt 720 \]' rootfs/usr/local/sbin/dexos-desktop-ready
+grep -q "xsetroot -solid '#000000'" rootfs/usr/local/sbin/dexos-xsetup
 grep -q '^Exec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
 grep -q '^TryExec=/usr/local/bin/dexos-installer$' rootfs/usr/share/applications/dexos-installer.desktop
 grep -q '^Terminal=false$' rootfs/usr/share/applications/dexos-installer.desktop
@@ -67,9 +56,9 @@ grep -q '^DexOS Live$' rootfs/etc/issue
 grep -q '^Welcome to DexOS Live$' rootfs/etc/motd
 test -f rootfs/etc/xdg/autostart/dexos-branding.desktop
 grep -q '^Exec=/usr/local/bin/dexos-apply-theme$' rootfs/etc/xdg/autostart/dexos-branding.desktop
-grep -q "wall=/usr/share/dexos/dexos-wallpaper.png" rootfs/usr/local/bin/dexos-apply-theme
-grep -q "grep '/last-image\$'" rootfs/usr/local/bin/dexos-apply-theme
-grep -q "xsetroot -solid '#6b2a2e'" rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'last-image' rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'set_backdrop' rootfs/usr/local/bin/dexos-apply-theme
+grep -q "xsetroot -solid '#000000'" rootfs/usr/local/bin/dexos-apply-theme
 
 # DexOS UX/runtime additions.
 grep -qx 'sudo' rootfs/etc/apk/world
@@ -88,17 +77,16 @@ grep -q '^permit nopass dexos as root$' rootfs/etc/doas.d/20-dexos-live.conf
 grep -q '^user-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^autologin-session=dexos$' rootfs/etc/lightdm/lightdm.conf.d/10-dexos-live.conf
 grep -q '^background=/usr/share/dexos/dexos-wallpaper.png$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
-test -s rootfs/usr/share/dexos/boot.jpg
-test -s rootfs/usr/share/dexos/boot.ppm
 test -s rootfs/usr/share/dexos/dexos-wallpaper.png
-head -c 2 rootfs/usr/share/dexos/boot.ppm | grep -q '^P6$'
-test -x rootfs/usr/local/bin/dexos-session-splash
+test ! -e rootfs/usr/share/dexos/boot.jpg
+test ! -e rootfs/usr/share/dexos/boot.ppm
+test ! -e rootfs/usr/local/bin/dexos-session-splash
+test ! -e rootfs/usr/share/dexos/installed/dexos-bootsplash
+test ! -e rootfs/usr/share/dexos/installed/dexos-bootsplash-finish
+test ! -e rootfs/usr/share/dexos/installed/dexos-splash-keys
 test -x rootfs/usr/local/bin/dexos-session
 grep -q '^Exec=/usr/local/bin/dexos-session$' rootfs/usr/share/xsessions/dexos.desktop
-grep -q 'pidof.*xfce4-panel' rootfs/usr/local/bin/dexos-session-splash || grep -q "alive('xfce4-panel')" rootfs/usr/local/bin/dexos-session-splash
-test -x rootfs/usr/share/dexos/installed/dexos-bootsplash
-test -x rootfs/usr/share/dexos/installed/dexos-bootsplash-finish
-test -x rootfs/usr/share/dexos/installed/dexos-splash-keys
+! grep -q 'dexos-session-splash' rootfs/usr/local/bin/dexos-session
 
 
 # Wi-Fi reprobe service: unblocks radio, resolves modaliases and notifies NetworkManager.
@@ -127,7 +115,7 @@ grep -qx 'sof-firmware' rootfs/etc/apk/world
 test -f rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 grep -q 'Option "Tapping" "on"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 grep -q 'Option "AccelProfile" "adaptive"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
-grep -q 'Option "AccelSpeed" "0.20"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
+grep -q 'Option "AccelSpeed" "0.00"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 test -f rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 grep -q 'value="pulseaudio"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 grep -q 'name="volume-max" type="uint" value="150"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
@@ -160,7 +148,7 @@ grep -q 'Option "Tapping" "on"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.con
 grep -q 'Option "TappingButtonMap" "lrm"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 grep -q 'Option "DisableWhileTyping" "on"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 grep -q 'Option "AccelProfile" "adaptive"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
-grep -q 'Option "AccelSpeed" "0.20"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
+grep -q 'Option "AccelSpeed" "0.00"' rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
 
 grep -q 'value="pulseaudio"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
 grep -q 'name="volume-max" type="uint" value="150"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml
@@ -217,8 +205,8 @@ cmp -s rootfs/usr/share/dexos/dexos-wallpaper.png rootfs/usr/share/xfce4/backdro
 grep -qx 'breeze-cursors' rootfs/etc/apk/world
 grep -q 'CursorThemeName" type="string" value="DexOS-Windows"' rootfs/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml
 grep -q 'xsetroot -cursor_name left_ptr' rootfs/usr/local/sbin/dexos-xsetup
-grep -q 'monitor${mon}/workspace0' rootfs/usr/local/bin/dexos-apply-theme
-grep -q 'xfdesktop --reload' rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'monitor${mon}/workspace0' rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'xfdesktop --reload' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'xfce-perchannel-xml/xfce4-desktop.xml' rootfs/etc/init.d/dexos-live-user
 grep -q 'export XCURSOR_THEME=DexOS-Windows' rootfs/usr/local/bin/dexos-session
 grep -q 'Gdk.Cursor.new_from_name' rootfs/usr/local/bin/dexos-language
@@ -227,7 +215,7 @@ grep -q 'Gdk.Cursor.new_from_name' rootfs/usr/local/bin/dexos-language
 # v006: branding and installer trust are applied independent of XDG autostart.
 grep -q '/usr/local/bin/dexos-apply-theme' rootfs/usr/local/bin/dexos-session
 grep -q '/usr/local/bin/dexos-trust-launchers' rootfs/usr/local/bin/dexos-session
-test -x rootfs/usr/share/dexos/installed/patch-initramfs-init.py
+test ! -e rootfs/usr/share/dexos/installed/patch-initramfs-init.py
 grep -q '^cursor-theme-name=DexOS-Windows$' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 ! grep -q '~language' rootfs/etc/lightdm/lightdm-gtk-greeter.conf
 
@@ -235,7 +223,7 @@ grep -q '^cursor-theme-name=DexOS-Windows$' rootfs/etc/lightdm/lightdm-gtk-greet
 # v007 wallpaper helper must attach to the real XFCE session bus.
 grep -q '/proc/$xpid/environ' rootfs/usr/local/bin/dexos-apply-theme
 grep -q 'DBUS_SESSION_BUS_ADDRESS' rootfs/usr/local/bin/dexos-apply-theme
-grep -q 'set_backdrop' rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'set_backdrop' rootfs/usr/local/bin/dexos-apply-theme
 
 
 # v008: wallpaper is prepared before XFCE and XFCE's own fallback is DexOS.
@@ -272,7 +260,8 @@ test -f rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
 grep -q '^\[redshift\]$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
 grep -q '^allowed=true$' rootfs/etc/geoclue/conf.d/90-dexos-redshift.conf
 grep -q '^Exec=/usr/local/bin/dexos-eye-protection --startup$' rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
-grep -q 'Iniciar protección automáticamente al entrar a DexOS' rootfs/usr/local/bin/dexos-eye-protection
+! grep -q 'Iniciar protección automáticamente al entrar a DexOS' rootfs/usr/local/bin/dexos-eye-protection
+grep -q "if not data\['enabled'\]" rootfs/usr/local/bin/dexos-eye-protection
 grep -q 'Ajustar automáticamente (GeoClue2 + respaldo por hora local)' rootfs/usr/local/bin/dexos-eye-protection
 test -f rootfs/usr/share/applications/dexos-eye-protection.desktop
 test -f rootfs/etc/xdg/autostart/dexos-eye-protection.desktop
@@ -315,5 +304,23 @@ grep -q 'internet_available' rootfs/usr/local/bin/dexos-eye-protection
 grep -q -- '--auto-daemon' rootfs/usr/local/bin/dexos-eye-protection
 grep -q 'Sin Internet/GeoClue2' rootfs/usr/local/bin/dexos-eye-protection
 grep -q 'hora local sin conexión' rootfs/usr/local/bin/dexos-eye-protection
+
+
+# v015: persistent Night Light, user-owned wallpaper, clean boot and Windows-like touchpad.
+grep -q 'wallpaper-initialized' rootfs/usr/local/bin/dexos-prepare-desktop
+grep -q '\[ -e "\$marker" \] && exit 0' rootfs/usr/local/bin/dexos-prepare-desktop
+! grep -q 'last-image' rootfs/usr/local/bin/dexos-apply-theme
+! grep -q 'dexos-session-splash' rootfs/usr/local/bin/dexos-session
+for opt in \
+  'Option "TappingDrag" "on"' \
+  'Option "TappingDragLock" "off"' \
+  'Option "HorizontalScrolling" "on"' \
+  'Option "NaturalScrolling" "off"' \
+  'Option "ClickMethod" "buttonareas"' \
+  'Option "MiddleEmulation" "off"' \
+  'Option "ScrollPixelDistance" "15"'; do
+    grep -q "$opt" rootfs/etc/X11/xorg.conf.d/40-dexos-libinput.conf
+done
+! grep -Rqs 'fbsplash' rootfs/usr/share/dexos rootfs/usr/local/bin 2>/dev/null
 
 echo 'test-config: OK'

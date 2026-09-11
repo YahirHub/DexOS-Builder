@@ -1,9 +1,0 @@
-#!/bin/sh
-esc="$(printf '\033')"; current=16
-while [ -p /.splash.ctrl ]; do
-    dev="/dev/tty$current"; [ -c "$dev" ] || { sleep 1; continue; }
-    stty -F "$dev" -echo -icanon min 1 time 0 2>/dev/null || exit 0
-    key=; IFS= read -r -n 1 key < "$dev" || continue
-    [ "$key" = "$esc" ] || continue
-    if [ "$current" -eq 16 ]; then chvt 1; current=1; else chvt 16; current=16; fi
-done

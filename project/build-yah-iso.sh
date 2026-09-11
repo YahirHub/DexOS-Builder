@@ -9,8 +9,8 @@ BUILD_HOME="$ROOT/build-home"
 KEY_DIR="$BUILD_HOME/.config/abuild"
 PRIVKEY="$KEY_DIR/yah-alpine.rsa"
 PUBKEY="$PRIVKEY.pub"
-ISO="$OUT/DexOS-edge-x86_64-v014.iso"
-VOLID="DEXOS_V014"
+ISO="$OUT/DexOS-edge-x86_64-v015.iso"
+VOLID="DEXOS_V015"
 mkdir -p "$CACHE" "$OUT" "$KEY_DIR"
 for cmd in proot xorrisofs openssl sha256sum sha512sum gzip xz; do command -v "$cmd" >/dev/null || { echo "Falta $cmd" >&2; exit 1; }; done
 [[ -x "$APORTS/scripts/mkimage.sh" ]]
@@ -27,13 +27,9 @@ mkdir -p "$ALPINE_ROOT/etc/apk/keys"
 cp "$PUBKEY" "$ALPINE_ROOT/etc/apk/keys/yah-alpine.rsa.pub"
 cp "$ROOT/project/mkimage/mkimg.yahxfce.sh" "$APORTS/scripts/mkimg.yahxfce.sh"
 cp "$ROOT/project/mkimage/genapkovl-yahxfce.sh" "$APORTS/scripts/genapkovl-yahxfce.sh"
-cp "$ROOT/project/mkimage/patch-initramfs-init.py" "$APORTS/scripts/patch-initramfs-init.py"
 cp "$ROOT/project/installer/dexos-installer.py" "$APORTS/scripts/dexos-installer.py"
 cp "$ROOT/project/installer/dexos-installer-backend.py" "$APORTS/scripts/dexos-installer-backend.py"
 cp "$ROOT/project/installer/installer-packages.txt" "$APORTS/scripts/installer-packages.txt"
-python3 "$ROOT/project/assets/generate-brand-assets.py"
-cp "$ROOT/project/assets/dexos-boot.jpg" "$APORTS/scripts/dexos-boot.jpg"
-cp "$ROOT/project/assets/dexos-boot.ppm" "$APORTS/scripts/dexos-boot.ppm"
 rm -rf "$APORTS/scripts/argon-grub-theme"
 cp -a "$ROOT/project/assets/argon-grub-theme" "$APORTS/scripts/argon-grub-theme"
 rm -rf "$APORTS/scripts/dexos-windows-cursor"
@@ -50,11 +46,7 @@ if [[ -z "$USER_WALLPAPER" ]]; then
     exit 1
 fi
 cp "$USER_WALLPAPER" "$APORTS/scripts/dexos-wallpaper"
-cp "$ROOT/project/installed/dexos-session-splash.py" "$APORTS/scripts/dexos-session-splash.py"
 cp "$ROOT/project/installed/dexos-session" "$APORTS/scripts/dexos-session"
-cp "$ROOT/project/installed/dexos-splash-keys" "$APORTS/scripts/dexos-splash-keys"
-cp "$ROOT/project/installed/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash"
-cp "$ROOT/project/installed/dexos-bootsplash-finish" "$APORTS/scripts/dexos-bootsplash-finish"
 cp "$ROOT/project/installed/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-init"
 cp "$ROOT/project/installed/dexos-wifi-refresh" "$APORTS/scripts/dexos-wifi-refresh"
 cp "$ROOT/project/installed/dexos-audio-init" "$APORTS/scripts/dexos-audio-init"
@@ -74,7 +66,7 @@ cp "$ROOT/project/installed/grub-update" "$APORTS/scripts/grub-update"
 cp "$ROOT/project/installed/grub-other-os" "$APORTS/scripts/grub-other-os"
 cp "$ROOT/project/installed/05_dexos_theme" "$APORTS/scripts/05_dexos_theme"
 cp "$ROOT/project/installed/09_dexos_linux" "$APORTS/scripts/09_dexos_linux"
-chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session-splash.py" "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-splash-keys"   "$APORTS/scripts/dexos-bootsplash" "$APORTS/scripts/dexos-bootsplash-finish" "$APORTS/scripts/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-refresh" "$APORTS/scripts/dexos-audio-init" "$APORTS/scripts/dexos-apk-refresh" "$APORTS/scripts/dexos-language.py" "$APORTS/scripts/dexos-trust-launchers" "$APORTS/scripts/dexos-video-init" "$APORTS/scripts/dexos-prepare-desktop" "$APORTS/scripts/dexos-boot-manager.py" "$APORTS/scripts/dexos-eye-protection.py" "$APORTS/scripts/dexos-power-init" "$APORTS/scripts/dexos-power-apply" "$APORTS/scripts/dexos-backlight-state" "$APORTS/scripts/boot-order" "$APORTS/scripts/grub-update" "$APORTS/scripts/grub-other-os" "$APORTS/scripts/05_dexos_theme" "$APORTS/scripts/09_dexos_linux"
+chmod +x "$APORTS/scripts/genapkovl-yahxfce.sh" "$APORTS/scripts/dexos-installer.py" "$APORTS/scripts/dexos-installer-backend.py"   "$APORTS/scripts/dexos-session" "$APORTS/scripts/dexos-wifi-init" "$APORTS/scripts/dexos-wifi-refresh" "$APORTS/scripts/dexos-audio-init" "$APORTS/scripts/dexos-apk-refresh" "$APORTS/scripts/dexos-language.py" "$APORTS/scripts/dexos-trust-launchers" "$APORTS/scripts/dexos-video-init" "$APORTS/scripts/dexos-prepare-desktop" "$APORTS/scripts/dexos-boot-manager.py" "$APORTS/scripts/dexos-eye-protection.py" "$APORTS/scripts/dexos-power-init" "$APORTS/scripts/dexos-power-apply" "$APORTS/scripts/dexos-backlight-state" "$APORTS/scripts/boot-order" "$APORTS/scripts/grub-update" "$APORTS/scripts/grub-other-os" "$APORTS/scripts/05_dexos_theme" "$APORTS/scripts/09_dexos_linux"
 
 python3 - "$APORTS/scripts/mkimage.sh" "$APORTS/scripts/mkimg.base.sh" <<'PY'
 from pathlib import Path
@@ -99,15 +91,6 @@ if 'YAH_SKIP_XORRISO' not in b:
     b=b[:idx]+marker+b[idx:]
 base.write_text(b)
 PY
-# Restore a pristine mkinitfs init script from the cached Alpine package on every build,
-# then apply the DexOS splash patch. This makes splash changes reproducible/idempotent.
-MKINITFS_APK="$(find "$CACHE" "$ALPINE_ROOT" -type f -name 'mkinitfs-*.apk' -print | sort | tail -1)"
-[[ -n "$MKINITFS_APK" ]]
-tar -xOzf "$MKINITFS_APK" usr/share/mkinitfs/initramfs-init > "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
-chmod 0755 "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
-python3 "$ROOT/project/mkimage/patch-initramfs-init.py" "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
-sh -n "$ALPINE_ROOT/usr/share/mkinitfs/initramfs-init"
-
 python3 - "$ALPINE_ROOT/usr/sbin/update-kernel" <<'PY'
 from pathlib import Path
 import sys
@@ -126,7 +109,7 @@ for line in lines:
     out.append(line)
 p.write_text('\n'.join(out)+'\n')
 PY
-PATCH_HASH="$( { cat "$ROOT/project/mkimage/patch-initramfs-init.py"; grep -E '^[[:space:]]*(initfs_cmdline|kernel_addons|kernel_flavors|kernel_firmware_packages|boot_addons|initrd_ucode)=' "$ROOT/project/mkimage/mkimg.yahxfce.sh"; cat "$ALPINE_ROOT/usr/sbin/update-kernel"; } | sha256sum | awk '{print $1}')"
+PATCH_HASH="$( { grep -E '^[[:space:]]*(initfs_cmdline|kernel_addons|kernel_flavors|kernel_firmware_packages|boot_addons|initrd_ucode)=' "$ROOT/project/mkimage/mkimg.yahxfce.sh"; cat "$ALPINE_ROOT/usr/sbin/update-kernel"; } | sha256sum | awk '{print $1}')"
 PATCH_STAMP="$CACHE/.dexos-initramfs-patch.sha256"
 if [[ ! -f "$PATCH_STAMP" ]] || [[ "$(cat "$PATCH_STAMP" 2>/dev/null || true)" != "$PATCH_HASH" ]]; then
   rm -rf "$CACHE"/kernel_*
@@ -188,12 +171,10 @@ gzip -dc "$initramfs" | xz -C crc32 -T1 -9e > "$initramfs_tmp"
 new_initrd_hash="$(xz -dc "$initramfs_tmp" | sha256sum | awk '{print $1}')"
 [[ "$old_initrd_hash" == "$new_initrd_hash" ]] || { echo "initramfs XZ payload mismatch" >&2; exit 1; }
 mv "$initramfs_tmp" "$initramfs"
-cp "$ROOT/project/assets/dexos-boot.ppm" "$IMG/fbsplash.ppm"
+rm -f "$IMG/fbsplash.ppm"
 # User-visible boot menu branding.
 sed -i -E 's/menuentry "Linux (lts|stable)"/menuentry "DexOS Live"/g' "$IMG/boot/grub/grub.cfg"
 sed -i -E 's/MENU LABEL Linux (lts|stable)/MENU LABEL DexOS Live/g' "$IMG/boot/syslinux/syslinux.cfg"
-grep -q ' splash' "$IMG/boot/grub/grub.cfg"
-grep -q ' splash' "$IMG/boot/syslinux/syslinux.cfg"
 xorrisofs -output "$ISO" -full-iso9660-filenames -joliet -rational-rock -sysid LINUX -volid "$VOLID" \
   -isohybrid-mbr "$IMG/boot/syslinux/isohdpfx.bin" -eltorito-boot boot/syslinux/isolinux.bin -eltorito-catalog boot/syslinux/boot.cat \
   -no-emul-boot -boot-load-size 4 -boot-info-table -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot -isohybrid-gpt-basdat -follow-links "$IMG"

@@ -31,7 +31,7 @@ def load_config():
         cp.read(CFG)
         data['enabled'] = cp.getboolean('eye-protection', 'enabled', fallback=False)
         data['temperature'] = cp.getint('eye-protection', 'temperature', fallback=DEFAULT_TEMP)
-        data['autostart'] = cp.getboolean('eye-protection', 'autostart', fallback=False)
+        data['autostart'] = cp.getboolean('eye-protection', 'autostart', fallback=data['enabled'])
         data['automatic'] = cp.getboolean('eye-protection', 'automatic', fallback=True)
     data['temperature'] = max(3000, min(6500, int(data['temperature'])))
     return data
@@ -43,7 +43,8 @@ def save_config(data):
     cp['eye-protection'] = {
         'enabled': 'true' if data['enabled'] else 'false',
         'temperature': str(int(data['temperature'])),
-        'autostart': 'true' if data['autostart'] else 'false',
+        # Compatibility key: enabled Night Light is always restored on login.
+        'autostart': 'true' if data['enabled'] else 'false',
         'automatic': 'true' if data['automatic'] else 'false',
     }
     with CFG.open('w') as fh:
@@ -57,11 +58,18 @@ def stop_daemon():
         pid = None
     if pid:
         try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        except PermissionError:
-            pass
+            cmdline = Path(f'/proc/{pid}/cmdline').read_bytes().replace(b'\0', b' ').decode(errors='ignore')
+        except OSError:
+            cmdline = ''
+        # PID files survive reboot; never kill an unrelated process if Linux
+        # has already reused the old numeric PID.
+        if 'dexos-eye-protection' in cmdline and '--auto-daemon' in cmdline:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                pass
     try:
         PIDFILE.unlink()
     except FileNotFoundError:
@@ -240,10 +248,6 @@ class EyeProtection(Gtk.Window):
         self.auto.set_active(self.data['automatic'])
         box.pack_start(self.auto, False, False, 0)
 
-        self.autostart = Gtk.CheckButton(label='Iniciar protección automáticamente al entrar a DexOS')
-        self.autostart.set_active(self.data['autostart'])
-        box.pack_start(self.autostart, False, False, 0)
-
         self.temp_label = Gtk.Label()
         self.temp_label.set_xalign(0)
         box.pack_start(self.temp_label, False, False, 0)
@@ -263,7 +267,6 @@ class EyeProtection(Gtk.Window):
 
         self.switch.connect('notify::active', self.changed)
         self.auto.connect('toggled', self.changed)
-        self.autostart.connect('toggled', self.changed)
         self.scale.connect('value-changed', self.changed)
         self.loading = False
         self.update_label()
@@ -278,7 +281,7 @@ class EyeProtection(Gtk.Window):
         self.data = {
             'enabled': self.switch.get_active(),
             'temperature': int(self.scale.get_value()),
-            'autostart': self.autostart.get_active(),
+            'autostart': self.switch.get_active(),
             'automatic': self.auto.get_active(),
         }
         self.update_label()
@@ -291,8 +294,8 @@ class EyeProtection(Gtk.Window):
                 msg = 'Protección automática activa. Usa GeoClue2 con Internet y la hora local sin conexión.'
             else:
                 msg = 'Protección activa con temperatura manual.'
-            if self.data['autostart']:
-                msg += ' Se restaurará al iniciar sesión.'
+            if self.data['enabled']:
+                msg += ' Se restaurará automáticamente al iniciar sesión.'
             self.status.set_text(msg)
         else:
             self.status.set_text((result.stderr or 'No se pudo ajustar la temperatura de color.').strip())
@@ -308,7 +311,7 @@ def main():
         raise SystemExit(automatic_daemon(max(3000, min(6500, temp))))
     if '--startup' in os.sys.argv:
         data = load_config()
-        if not data['autostart']:
+        if not data['enabled']:
             raise SystemExit(0)
         raise SystemExit(apply(data).returncode)
     if '--apply' in os.sys.argv:

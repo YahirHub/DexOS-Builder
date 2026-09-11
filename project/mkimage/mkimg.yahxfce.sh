@@ -3,13 +3,13 @@ profile_yahxfce() {
     # Desktop does not need xtables-addons kernel modules. Omitting this
     # standard-profile addon saves several MiB and keeps offline builds stable.
     kernel_addons=""
-    initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet splash"
+    initfs_cmdline="modules=loop,squashfs,sd-mod,usb-storage,uas,sr-mod,isofs quiet"
     profile_abbrev="dexos"
     title="DexOS Live"
     desc="DexOS: sistema Live ligero basado en Alpine Linux con XFCE para PC y laptop."
     arch="x86_64"
     image_name="DexOS"
-    output_filename="DexOS-edge-x86_64-v014.iso"
+    output_filename="DexOS-edge-x86_64-v015.iso"
     hostname="dexos-live"
     apkovl="genapkovl-yahxfce.sh"
     kernel_flavors="lts"

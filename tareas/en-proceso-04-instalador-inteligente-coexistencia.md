@@ -60,3 +60,17 @@ Permitir instalación segura en disco completo o coexistencia con Windows/Linux,
 - [x] Volver automáticamente a GeoClue2 cuando haya conectividad.
 - [x] Generar y verificar ISO v014.
 - [ ] Confirmar en hardware real que el brillo persiste después de reiniciar v014.
+
+## Extensión v015 — persistencia visual y touchpad
+
+- [x] Hacer persistente Redshift/Night Light siempre que quede activado.
+- [x] Eliminar el checkbox redundante de autoinicio de Night Light.
+- [x] Evitar matar procesos por PID obsoleto del supervisor de Redshift.
+- [x] Eliminar foto/splash personalizado de arranque y sesión.
+- [x] Eliminar `splash` de GRUB/Syslinux/kernel instalado.
+- [x] Mantener el wallpaper DexOS sólo como valor inicial.
+- [x] Respetar permanentemente el wallpaper elegido después por el usuario.
+- [x] Ajustar touchpad a un perfil libinput cercano a Windows Precision Touchpad.
+- [x] Generar e inspeccionar ISO v015.
+- [ ] Validar Night Light tras reinicio real con v015.
+- [ ] Afinar velocidad del touchpad en hardware real si el usuario desea un tacto más rápido/lento.

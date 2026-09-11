@@ -538,8 +538,6 @@ def chroot(cmd, *, input_text=None, check=True):
 
 def configure_branding():
     progress(0.70, 'Aplicando identidad DexOS')
-    copy_if('/usr/share/dexos/boot.jpg', TARGET / 'usr/share/dexos/boot.jpg')
-    copy_if('/usr/share/dexos/boot.ppm', TARGET / 'usr/share/dexos/boot.ppm')
     copy_if('/usr/share/dexos/dexos-wallpaper.png', TARGET / 'usr/share/dexos/dexos-wallpaper.png')
     copy_if('/usr/share/backgrounds/xfce/DexOS.png', TARGET / 'usr/share/backgrounds/xfce/DexOS.png')
     xfce_default = TARGET / 'usr/share/backgrounds/xfce/xfce-x.svg'
@@ -557,11 +555,7 @@ def configure_branding():
     if all_apps.exists() or all_apps.is_symlink(): all_apps.unlink()
     all_apps.symlink_to('applications-other.svg')
     copy_if('/usr/local/bin/dexos-session', TARGET / 'usr/local/bin/dexos-session', 0o755)
-    copy_if('/usr/local/bin/dexos-session-splash', TARGET / 'usr/local/bin/dexos-session-splash', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-language', TARGET / 'usr/local/bin/dexos-language', 0o755)
-    copy_if('/usr/share/dexos/installed/dexos-splash-keys', TARGET / 'usr/local/sbin/dexos-splash-keys', 0o755)
-    copy_if('/usr/share/dexos/installed/dexos-bootsplash', TARGET / 'etc/init.d/dexos-bootsplash', 0o755)
-    copy_if('/usr/share/dexos/installed/dexos-bootsplash-finish', TARGET / 'etc/init.d/dexos-bootsplash-finish', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-wifi-init', TARGET / 'etc/init.d/dexos-wifi-init', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-wifi-refresh', TARGET / 'etc/init.d/dexos-wifi-refresh', 0o755)
     copy_if('/usr/share/dexos/installed/dexos-audio-init', TARGET / 'usr/local/bin/dexos-audio-init', 0o755)
@@ -587,7 +581,6 @@ def configure_branding():
         if path.exists():
             path.chmod(path.stat().st_mode & ~0o111)
     copy_if('/usr/share/dexos/installed/dexos-apk-refresh', TARGET / 'etc/init.d/dexos-apk-refresh', 0o755)
-    copy_if('/usr/share/dexos/installed/patch-initramfs-init.py', TARGET / 'usr/share/dexos/patch-initramfs-init.py', 0o755)
     copy_if('/usr/local/sbin/dexos-xsetup', TARGET / 'usr/local/sbin/dexos-xsetup', 0o755)
     copy_if('/usr/local/bin/dexos-apply-theme', TARGET / 'usr/local/bin/dexos-apply-theme', 0o755)
     copy_if('/etc/xdg/autostart/dexos-branding.desktop', TARGET / 'etc/xdg/autostart/dexos-branding.desktop')
@@ -611,15 +604,6 @@ def configure_branding():
     write(TARGET / 'etc/sudoers.d/10-wheel', '%wheel ALL=(ALL:ALL) ALL\n', 0o440)
     write(TARGET / 'etc/conf.d/networkmanager', 'rc_need="dexos-wifi-init"\n')
     write(TARGET / 'usr/share/xsessions/dexos.desktop', '[Desktop Entry]\nName=DexOS\nComment=DexOS XFCE Session\nExec=/usr/local/bin/dexos-session\nTryExec=/usr/local/bin/dexos-session\nType=Application\nDesktopNames=XFCE\n')
-
-
-def patch_installed_initramfs(text):
-    if '/usr/share/dexos/boot.ppm' in text:
-        return text
-    needle = 'for fbsplash in /media/*/fbsplash.ppm; do\n\t\t[ -e "$fbsplash" ] && break\n\tdone'
-    if needle not in text:
-        raise InstallError('La versión de mkinitfs no contiene el punto de integración de bootsplash esperado.')
-    return text.replace(needle, needle + '\n\t[ -e "$fbsplash" ] || fbsplash=/usr/share/dexos/boot.ppm', 1)
 
 
 def configure_system(cfg, efi_partition, root_partition):
@@ -666,21 +650,14 @@ def configure_system(cfg, efi_partition, root_partition):
     write(TARGET / 'etc/fstab', fstab)
     write(TARGET / 'etc/apk/repositories', '''https://dl-cdn.alpinelinux.org/alpine/edge/main\nhttps://dl-cdn.alpinelinux.org/alpine/edge/community\n@testing https://dl-cdn.alpinelinux.org/alpine/edge/testing\n''')
     write(TARGET / 'etc/mkinitfs/features.d/dexosroot.modules', '''kernel/drivers/virtio/virtio.ko*\nkernel/drivers/virtio/virtio_ring.ko*\nkernel/drivers/virtio/virtio_pci.ko*\nkernel/drivers/block/virtio_blk.ko*\nkernel/fs/ext4/ext4.ko*\n''')
-    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.files', '/usr/share/dexos/boot.ppm\n/sbin/fbsplash\n/usr/bin/setsid\n/usr/bin/chvt\n/bin/stty\n')
-    init_script = TARGET / 'usr/share/mkinitfs/initramfs-init'
-    if not init_script.is_file():
-        raise InstallError('Falta initramfs-init en el sistema destino.')
-    patcher = TARGET / 'usr/share/dexos/patch-initramfs-init.py'
-    if not patcher.is_file():
-        raise InstallError('Falta el parche DexOS de bootsplash en el sistema destino.')
-    run(['/usr/bin/python3', str(patcher), str(init_script)])
+    write(TARGET / 'etc/mkinitfs/features.d/dexosroot.files', '')
     write(TARGET / 'etc/mkinitfs/mkinitfs.conf', 'features="ata base ide scsi usb virtio ext4 nvme kms dexosroot"\n')
 
     for service, level in [
         ('devfs','sysinit'), ('dmesg','sysinit'), ('udev','sysinit'), ('udev-trigger','sysinit'), ('udev-settle','sysinit'),
         ('udev-postmount','default'), ('swclock','boot'), ('modules','boot'), ('sysctl','boot'), ('hostname','boot'),
-        ('bootmisc','boot'), ('syslog','boot'), ('dexos-bootsplash','boot'), ('dexos-wifi-init','boot'), ('dbus','default'), ('elogind','default'), ('networkmanager','default'), ('dexos-wifi-refresh','default'), ('chronyd','default'),
-        ('bluetooth','default'), ('alsa','default'), ('dexos-backlight','default'), ('dexos-power','default'), ('lightdm','default'), ('dexos-bootsplash-finish','default'), ('mount-ro','shutdown'), ('killprocs','shutdown'), ('savecache','shutdown')]:
+        ('bootmisc','boot'), ('syslog','boot'), ('dexos-wifi-init','boot'), ('dbus','default'), ('elogind','default'), ('networkmanager','default'), ('dexos-wifi-refresh','default'), ('chronyd','default'),
+        ('bluetooth','default'), ('alsa','default'), ('dexos-backlight','default'), ('dexos-power','default'), ('lightdm','default'), ('mount-ro','shutdown'), ('killprocs','shutdown'), ('savecache','shutdown')]:
         chroot(['/sbin/rc-update', 'add', service, level], check=False)
     chroot(['/sbin/rc-update', 'del', 'mdev', 'sysinit'], check=False)
     chroot(['/sbin/rc-update', 'del', 'hwdrivers', 'sysinit'], check=False)
@@ -756,7 +733,7 @@ def install_bootloader(boot_disk, root_uuid, efi_partition=None, *, preserve_efi
             shutil.copy2(efi, fallback)
 
     install_argon_theme()
-    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=8\nGRUB_DEFAULT=saved\nGRUB_SAVEDEFAULT=false\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_DISABLE_OS_PROBER=false\nGRUB_THEME="/boot/grub/themes/argon/theme.txt"\nGRUB_GFXMODE="1920x1080,auto"\nGRUB_GFXPAYLOAD_LINUX=keep\nGRUB_CMDLINE_LINUX_DEFAULT="quiet splash vt.global_cursor_default=0 rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
+    write(TARGET / 'etc/default/grub', '''GRUB_TIMEOUT=8\nGRUB_DEFAULT=saved\nGRUB_SAVEDEFAULT=false\nGRUB_DISABLE_SUBMENU=y\nGRUB_DISABLE_RECOVERY=true\nGRUB_DISTRIBUTOR="DexOS"\nGRUB_DISABLE_LINUX_UUID=false\nGRUB_DISABLE_OS_PROBER=false\nGRUB_THEME="/boot/grub/themes/argon/theme.txt"\nGRUB_GFXMODE="1920x1080,auto"\nGRUB_GFXPAYLOAD_LINUX=keep\nGRUB_CMDLINE_LINUX_DEFAULT="quiet vt.global_cursor_default=0 rootfstype=ext4 modules=virtio,virtio_ring,virtio_pci,virtio_blk,ext4"\n''')
     # os-prober remains the primary detector. 31_dexos_other_os safely fills
     # gaps without rewriting foreign Linux kernel command lines.
     chroot(['/usr/bin/os-prober'], check=False)

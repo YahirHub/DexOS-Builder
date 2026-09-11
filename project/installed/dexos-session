@@ -20,5 +20,4 @@ export MOZ_X11_EGL=1
 # autostart manager and apply only after xfdesktop/GVfs become ready.
 /usr/local/bin/dexos-apply-theme >/tmp/dexos-apply-theme.log 2>&1 &
 /usr/local/bin/dexos-trust-launchers >/tmp/dexos-trust-launchers.log 2>&1 &
-/usr/local/bin/dexos-session-splash >/tmp/dexos-session-splash.log 2>&1 &
 exec startxfce4
